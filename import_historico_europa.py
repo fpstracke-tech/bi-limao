@@ -105,11 +105,27 @@ def main():
 
     print("\n[2] Enviando ao Supabase...")
     try:
-        from supabase_upsert import upsert
-        result = upsert("europa_precos", records, on_conflict="semana,ano,mercado")
-        print(f"    OK: {result['inserted']} registros inseridos/atualizados")
-        if result.get("errors"):
-            print(f"    Erros: {result['errors'][:3]}")
+        import os, requests as req
+        url  = os.environ.get("SUPABASE_URL") or __import__('dotenv', fromlist=['dotenv_values']).dotenv_values().get("SUPABASE_URL","")
+        key  = os.environ.get("SUPABASE_KEY") or __import__('dotenv', fromlist=['dotenv_values']).dotenv_values().get("SUPABASE_KEY","")
+        hdrs = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json", "Prefer": "return=minimal"}
+
+        # Deletar registros existentes da fonte "Agregado" e recarregar
+        anos_str = ",".join(f"'{r['ano']}'" for r in records)
+        del_r = req.delete(f"{url}/rest/v1/europa_precos?mercado=eq.Agregado", headers=hdrs)
+        print(f"    Delete existentes: {del_r.status_code}")
+
+        # Insert em lote
+        import json
+        batch = 500
+        total = 0
+        for i in range(0, len(records), batch):
+            r = req.post(f"{url}/rest/v1/europa_precos", headers=hdrs, data=json.dumps(records[i:i+batch]))
+            if r.ok:
+                total += len(records[i:i+batch])
+            else:
+                print(f"    Erro batch {i}: {r.status_code} {r.text[:100]}")
+        print(f"    OK: {total} registros inseridos")
     except Exception as e:
         print(f"    ERRO Supabase: {e}")
         sys.exit(1)

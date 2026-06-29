@@ -670,7 +670,9 @@ async function loadBrasil() {
 
 // Histórico comparativo: uma linha por ano, eixo X = semana ISO
 function drawBrasilHistorico(data, anos, regiao) {
-  const filtered = data.filter(d => d.regiao === regiao);
+  // Usa apenas fonte HF Brasil para séries históricas consistentes
+  const hf = data.filter(d => d.tipo === 'HF Brasil');
+  const filtered = hf.filter(d => d.regiao === regiao);
   // Semanas presentes em qualquer ano
   const semanas = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
   const datasets = anos.map((ano, i) =>

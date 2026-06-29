@@ -97,6 +97,24 @@ def main():
     # Preview
     anos = sorted(set(r["ano"] for r in records))
     regioes = sorted(set(r["regiao"] for r in records))
+    # Dedup por (data, regiao, tipo) — média de preco_kg se múltiplas linhas
+    from collections import defaultdict
+    grupos = defaultdict(list)
+    for r in records:
+        grupos[(r["data"], r["regiao"], r["tipo"])].append(r["preco_kg"])
+    dedup = []
+    seen = set()
+    for r in records:
+        key = (r["data"], r["regiao"], r["tipo"])
+        if key not in seen:
+            seen.add(key)
+            r2 = r.copy()
+            r2["preco_kg"]   = round(sum(grupos[key]) / len(grupos[key]), 4)
+            r2["preco_4_5kg"] = round(r2["preco_kg"] * 4.5, 2)
+            dedup.append(r2)
+    print(f"    Apos dedup: {len(dedup)} (era {len(records)})")
+    records = dedup
+
     print(f"\n    Anos: {anos}")
     print(f"    Regiões: {regioes}")
     print(f"    Preço range: R$ {min(r['preco_kg'] for r in records):.4f} – {max(r['preco_kg'] for r in records):.4f} /kg")
