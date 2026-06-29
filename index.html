@@ -178,7 +178,7 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── CLIMA GRID ──────────────────────────────────────────────── */
-  .clima-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+  .clima-grid, .cidades-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
   .cidade-card .card-inner { display: flex; flex-direction: column; gap: .3rem; }
   .cidade-nome { font-size: .8rem; font-weight: 600; color: var(--text); }
   .cidade-temp { font-size: 2rem; font-weight: 700; color: var(--green); line-height: 1; }
@@ -384,19 +384,16 @@
         <div class="page-title">Clima Global</div>
         <div class="page-sub">Previsão 5 dias nos principais mercados de destino</div>
       </div>
-      <div class="card-shell chart-card">
+      <div class="cidades-grid" id="clima-global-cards">
+        <div class="loading"><div class="spinner"></div>Carregando…</div>
+      </div>
+      <div class="card-shell chart-card" style="margin-top:1rem">
         <div class="card-inner">
           <div class="chart-header">
-            <span class="chart-title">Temperatura — Próximos 5 dias</span>
+            <span class="chart-title">Previsão 5 dias</span>
             <select class="styled-select" id="global-cidade-select"></select>
           </div>
           <div class="chart-wrap"><canvas id="chartGlobal"></canvas></div>
-        </div>
-      </div>
-      <div class="card-shell chart-card">
-        <div class="card-inner">
-          <div class="chart-header"><span class="chart-title">Chuva acumulada (mm)</span></div>
-          <div class="chart-wrap" style="height:180px"><canvas id="chartGlobalChuva"></canvas></div>
         </div>
       </div>
     </section>
@@ -575,28 +572,36 @@ function renderKpis(containerId, kpis) {
 // ── BRASIL ──────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════
 async function loadBrasil() {
+  // Nova estrutura: data, semana, ano, regiao, tipo, preco_kg, preco_4_5kg
   const data = await sbFetch('brasil_precos', {
-    select: 'semana,ano,data_semana,regiao,preco_4_5kg',
-    order: 'ano.asc,semana.asc',
-    limit: 2000
+    select: 'data,semana,ano,regiao,tipo,preco_kg,preco_4_5kg',
+    order: 'data.asc',
+    limit: 3000
   });
+
+  if (!data.length) { document.getElementById('brasil-kpis').innerHTML = '<div class="loading">Sem dados</div>'; return; }
+
+  // Normaliza tipos numéricos
+  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.preco_kg = +d.preco_kg; d.preco_4_5kg = +d.preco_4_5kg; });
 
   const regioes = [...new Set(data.map(d => d.regiao))].sort();
   const curAno  = Math.max(...data.map(d => d.ano));
-  const semanas = [...new Set(data.filter(d => d.ano === curAno).map(d => d.semana))].sort((a,b) => a-b);
+  const lastData = data.filter(d => d.ano === curAno);
+  const lastDate = lastData.map(d=>d.data).sort().at(-1);
+  const lastDay  = lastData.filter(d => d.data === lastDate);
+  const avgLast  = lastDay.reduce((s,d) => s + d.preco_kg, 0) / (lastDay.length || 1);
 
-  // KPIs
-  const lastSem  = semanas[semanas.length - 1];
-  const lastData = data.filter(d => d.ano === curAno && d.semana === lastSem);
-  const avgLast  = lastData.reduce((s, d) => s + +d.preco_4_5kg, 0) / (lastData.length || 1);
-  const prevData = data.filter(d => d.ano === curAno && d.semana === lastSem - 1);
-  const avgPrev  = prevData.reduce((s, d) => s + +d.preco_4_5kg, 0) / (prevData.length || 1);
+  // Preço do dia anterior para tendência
+  const dates   = [...new Set(lastData.map(d=>d.data))].sort();
+  const prevDate = dates[dates.length - 2];
+  const prevDay  = lastData.filter(d => d.data === prevDate);
+  const avgPrev  = prevDay.reduce((s,d) => s + d.preco_kg, 0) / (prevDay.length || 1);
   const trend    = avgPrev ? ((avgLast - avgPrev) / avgPrev) * 100 : null;
 
   renderKpis('brasil-kpis', [
-    { label: 'Semana atual', value: `S${lastSem}/${curAno}`, unit: '' },
-    { label: 'Preço médio', value: `R$ ${avgLast.toFixed(2)}`, unit: 'cx 4,5 kg', trend },
-    { label: 'Regiões', value: regioes.length, unit: 'monitoradas' },
+    { label: 'Última atualização', value: lastDate ? lastDate.slice(5) : '—', unit: lastDate ? lastDate.slice(0,4) : '' },
+    { label: 'Preço médio', value: `R$ ${avgLast.toFixed(2)}`, unit: 'R$/kg · CEASAs', trend },
+    { label: 'CEASAs', value: regioes.length, unit: 'monitoradas' },
     { label: 'Registros', value: data.length, unit: 'histórico' },
   ]);
 
@@ -616,14 +621,16 @@ async function loadBrasil() {
 }
 
 function drawBrasil(data, regioes, ano) {
+  // Agrupa por semana, calcula média de preco_kg por regiao
   const filtered = data.filter(d => d.ano === ano);
   const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
   const labels   = semanas.map(s => `S${s}`);
 
   const datasets = regioes.map((reg, i) =>
     lineDs(reg, semanas.map(s => {
-      const r = filtered.find(d => d.semana === s && d.regiao === reg);
-      return r ? +r.preco_4_5kg : null;
+      const rows = filtered.filter(d => d.semana === s && d.regiao === reg);
+      if (!rows.length) return null;
+      return +(rows.reduce((sum,d) => sum + d.preco_kg, 0) / rows.length).toFixed(3);
     }), PALETTE[i % PALETTE.length])
   );
 
@@ -645,23 +652,32 @@ async function loadChile() {
     limit: 3000
   });
 
-  const mercados = [...new Set(data.map(d => d.mercado))].sort();
+  if (!data.length) { document.getElementById('chile-kpis').innerHTML = '<div class="loading">Sem dados</div>'; return; }
+
+  // Normaliza tipos
+  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +d.precio; });
+
+  const mercados = [...new Set(data.map(d => d.mercado).filter(Boolean))].sort();
   const curAno   = Math.max(...data.map(d => d.ano));
   const lastData = data.filter(d => d.ano === curAno);
-  const avgPrice = lastData.reduce((s, d) => s + +d.precio, 0) / (lastData.length || 1);
+  const avgPrice = lastData.reduce((s, d) => s + d.precio, 0) / (lastData.length || 1);
+  const lastSem  = Math.max(...lastData.map(d => d.semana));
+  const prevSem  = data.filter(d => d.ano === curAno && d.semana === lastSem - 1);
+  const avgPrev  = prevSem.reduce((s,d) => s + d.precio, 0) / (prevSem.length || 1);
+  const trend    = avgPrev ? ((avgPrice - avgPrev) / avgPrev) * 100 : null;
 
   renderKpis('chile-kpis', [
-    { label: 'Preço médio', value: `${Math.round(avgPrice).toLocaleString()}`, unit: 'CLP/kg' },
+    { label: 'Preço médio', value: `${Math.round(avgPrice).toLocaleString('pt-BR')}`, unit: 'CLP/kg', trend },
     { label: 'Mercados', value: mercados.length, unit: 'monitorados' },
     { label: 'Registros', value: data.length, unit: 'histórico' },
     { label: 'Ano', value: curAno, unit: '' },
   ]);
 
   // Line — preço médio semanal
-  const semanas = [...new Set(data.filter(d=>d.ano===curAno).map(d=>d.semana))].sort((a,b)=>a-b);
+  const semanas = [...new Set(lastData.map(d => d.semana))].sort((a,b) => a-b);
   const avgSem  = semanas.map(s => {
-    const r = data.filter(d => d.ano===curAno && d.semana===s);
-    return r.length ? r.reduce((acc,d)=>acc+ +d.precio,0)/r.length : null;
+    const r = lastData.filter(d => d.semana === s);
+    return r.length ? +(r.reduce((acc,d) => acc + d.precio, 0) / r.length).toFixed(0) : null;
   });
   mkChart('chartChileLine', {
     type: 'line',
@@ -671,13 +687,14 @@ async function loadChile() {
 
   // Bar — média por mercado
   const avgMerc = mercados.map(m => {
-    const r = data.filter(d=>d.mercado===m);
-    return r.length ? r.reduce((a,d)=>a+ +d.precio,0)/r.length : 0;
+    const r = data.filter(d => d.mercado === m);
+    return r.length ? +(r.reduce((a,d) => a + d.precio, 0) / r.length).toFixed(0) : 0;
   });
   mkChart('chartChileBar', {
     type: 'bar',
     data: { labels: mercados, datasets: [barDs('Média CLP/kg', avgMerc, PALETTE[0])] },
-    options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales: { x:{grid:{color:'rgba(255,255,255,.04)'}}, y:{grid:{display:false}} } }
+    options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}},
+      scales: { x:{grid:{color:'rgba(255,255,255,.04)'}}, y:{grid:{display:false}} } }
   });
 }
 
@@ -783,38 +800,75 @@ function drawClimaFc(forecast, cidade) {
 // ═══════════════════════════════════════════════════════════════
 async function loadClimaGlobal() {
   const data = await sbFetch('clima_forecast', {
-    select:'cidade,pais,data_hora,temp_c,chuva_mm',
+    select:'cidade,pais,data_hora,temp_c,temp_min,temp_max,chuva_mm,descricao,humidade_pct',
     order:'data_hora.asc', limit:500
   });
 
-  const cidades = [...new Set(data.map(d=>`${d.cidade} (${d.pais})`))].sort();
-  const sel = document.getElementById('global-cidade-select');
-  sel.innerHTML = cidades.map(c=>`<option>${c}</option>`).join('');
+  if (!data.length) return;
 
-  function drawGlobal(cidadeLabel) {
-    const [cidade, pais] = cidadeLabel.replace(')', '').split(' (');
-    const fc = data.filter(d=>d.cidade===cidade && d.pais===pais);
-    // Agrupa por dia
+  // Condição atual por cidade = primeiro registro (mais próximo)
+  const seenCity = {}; const latest = [];
+  for (const r of data) {
+    const key = `${r.cidade}|${r.pais}`;
+    if (!seenCity[key]) { seenCity[key] = true; latest.push(r); }
+  }
+
+  // Cards de cidade (igual ao Local)
+  const container = document.getElementById('clima-global-cards');
+  container.innerHTML = '';
+  latest.forEach((c, i) => {
+    const div = document.createElement('div');
+    div.className = 'card-shell cidade-card';
+    div.style.animationDelay = `${i * .06}s`;
+    div.innerHTML = `<div class="card-inner">
+      <div class="cidade-nome">${c.cidade} <span style="font-size:.6rem;color:var(--text-3)">${c.pais}</span></div>
+      <div class="cidade-temp">${c.temp_c}°</div>
+      <div class="cidade-desc">${c.descricao || ''}</div>
+      <div class="cidade-extra">
+        <span>💧 ${c.humidade_pct || 0}%</span>
+        <span>🌧 ${(+c.chuva_mm || 0).toFixed(1)}mm</span>
+        <span>↑${c.temp_max}° ↓${c.temp_min}°</span>
+      </div>
+    </div>`;
+    container.appendChild(div);
+  });
+
+  // Select para forecast
+  const cidades = [...new Set(data.map(d=>`${d.cidade}|${d.pais}`))];
+  const sel = document.getElementById('global-cidade-select');
+  sel.innerHTML = cidades.map(c => {
+    const [cidade, pais] = c.split('|');
+    return `<option value="${c}">${cidade} (${pais})</option>`;
+  }).join('');
+
+  function drawGlobal(key) {
+    const [cidade, pais] = key.split('|');
+    const fc = data.filter(d => d.cidade === cidade && d.pais === pais);
+    // Agrupa por dia — temp máx e chuva acumulada
     const byDay = {};
-    fc.forEach(f => { const d = f.data_hora.slice(0,10); if(!byDay[d]) byDay[d]={temps:[],chuva:0}; byDay[d].temps.push(f.temp_c); byDay[d].chuva += +f.chuva_mm; });
-    const days = Object.keys(byDay).sort();
-    const labels = days.map(d=>d.slice(5));
-    const avgTemps = days.map(d=>{ const t=byDay[d].temps; return Math.round(t.reduce((a,b)=>a+b,0)/t.length); });
-    const chuvas   = days.map(d=>byDay[d].chuva.toFixed(1));
+    fc.forEach(f => {
+      const d = f.data_hora.slice(0,10);
+      if (!byDay[d]) byDay[d] = { tempMax: -99, tempMin: 99, chuva: 0 };
+      byDay[d].tempMax = Math.max(byDay[d].tempMax, +f.temp_max || +f.temp_c);
+      byDay[d].tempMin = Math.min(byDay[d].tempMin, +f.temp_min || +f.temp_c);
+      byDay[d].chuva  += +f.chuva_mm;
+    });
+    const days   = Object.keys(byDay).sort();
+    const labels = days.map(d => d.slice(5));
 
     mkChart('chartGlobal', {
-      type:'line',
-      data:{ labels, datasets:[lineDs(`Temp °C — ${cidade}`, avgTemps, PALETTE[0], true)] },
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:scalesLine}
-    });
-    mkChart('chartGlobalChuva', {
-      type:'bar',
-      data:{ labels, datasets:[barDs('Chuva mm', chuvas, PALETTE[6])] },
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,.04)'}}}}
+      type: 'bar',
+      data: { labels, datasets: [
+        barDs('Temp Máx °C', days.map(d => byDay[d].tempMax), PALETTE[0]),
+        lineDs('Chuva mm', days.map(d => byDay[d].chuva.toFixed(1)), PALETTE[6]),
+      ]},
+      options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'bottom'}},
+        scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
     });
   }
 
-  sel.addEventListener('change', ()=>drawGlobal(sel.value));
+  sel.addEventListener('change', () => drawGlobal(sel.value));
   if (cidades.length) drawGlobal(cidades[0]);
 }
 
