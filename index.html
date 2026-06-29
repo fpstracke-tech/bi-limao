@@ -295,18 +295,37 @@
     <!-- ── BRASIL ──────────────────────────────────────────────── -->
     <section class="page active" id="page-brasil">
       <div class="page-header">
-        <div class="page-eyebrow">🇧🇷 HF Brasil</div>
+        <div class="page-eyebrow">🇧🇷 Notícias Agrícolas / CEASAs</div>
         <div class="page-title">Preços Brasil</div>
-        <div class="page-sub">Lima Ácida Tahiti — R$/caixa 4,5 kg por região</div>
+        <div class="page-sub">Lima Ácida Tahiti — R$/kg por região</div>
       </div>
       <div class="kpi-grid" id="brasil-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
+      <!-- Histórico comparativo por ano -->
       <div class="card-shell chart-card">
         <div class="card-inner">
           <div class="chart-header">
-            <span class="chart-title">Evolução Semanal por Região</span>
-            <div class="filter-bar" id="brasil-filter"></div>
+            <span class="chart-title">Histórico por Ano — Média semanal R$/kg</span>
+            <select class="styled-select" id="brasil-regiao-select"></select>
           </div>
-          <div class="chart-wrap"><canvas id="chartBrasil"></canvas></div>
+          <div class="chart-wrap"><canvas id="chartBrasilHistorico"></canvas></div>
+        </div>
+      </div>
+      <!-- Últimas 4 semanas -->
+      <div class="two-col" style="margin-top:1rem">
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — R$/kg por região</span></div>
+            <div class="chart-wrap"><canvas id="chartBrasilUlt4sem"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header">
+              <span class="chart-title">Evolução Semanal por Região</span>
+              <div class="filter-bar" id="brasil-filter"></div>
+            </div>
+            <div class="chart-wrap"><canvas id="chartBrasil"></canvas></div>
+          </div>
         </div>
       </div>
     </section>
@@ -319,7 +338,17 @@
         <div class="page-sub">Limón — CLP/kg por mercado</div>
       </div>
       <div class="kpi-grid" id="chile-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
-      <div class="two-col">
+      <!-- Histórico comparativo por ano -->
+      <div class="card-shell chart-card">
+        <div class="card-inner">
+          <div class="chart-header">
+            <span class="chart-title">Histórico por Ano — Média semanal CLP/kg</span>
+            <select class="styled-select" id="chile-mercado-select"></select>
+          </div>
+          <div class="chart-wrap"><canvas id="chartChileHistorico"></canvas></div>
+        </div>
+      </div>
+      <div class="two-col" style="margin-top:1rem">
         <div class="card-shell chart-card">
           <div class="card-inner">
             <div class="chart-header"><span class="chart-title">Evolução Semanal</span></div>
@@ -576,30 +605,24 @@ function renderKpis(containerId, kpis) {
 // ── BRASIL ──────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════
 async function loadBrasil() {
-  // Nova estrutura: data, semana, ano, regiao, tipo, preco_kg, preco_4_5kg
   const data = await sbFetch('brasil_precos', {
     select: 'data,semana,ano,regiao,tipo,preco_kg,preco_4_5kg',
-    order: 'data.asc',
-    limit: 3000
+    order: 'data.asc', limit: 5000
   });
 
   if (!data.length) { document.getElementById('brasil-kpis').innerHTML = '<div class="loading">Sem dados</div>'; return; }
 
-  // Normaliza tipos numéricos
   data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.preco_kg = +d.preco_kg; d.preco_4_5kg = +d.preco_4_5kg; });
 
   const regioes = [...new Set(data.map(d => d.regiao))].sort();
-  const curAno  = Math.max(...data.map(d => d.ano));
+  const anos    = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
+  const curAno  = Math.max(...anos);
   const lastData = data.filter(d => d.ano === curAno);
-  const lastDate = lastData.map(d=>d.data).sort().at(-1);
+  const lastDate = [...new Set(lastData.map(d => d.data))].sort().at(-1);
   const lastDay  = lastData.filter(d => d.data === lastDate);
   const avgLast  = lastDay.reduce((s,d) => s + d.preco_kg, 0) / (lastDay.length || 1);
-
-  // Preço do dia anterior para tendência
-  const dates   = [...new Set(lastData.map(d=>d.data))].sort();
-  const prevDate = dates[dates.length - 2];
-  const prevDay  = lastData.filter(d => d.data === prevDate);
-  const avgPrev  = prevDay.reduce((s,d) => s + d.preco_kg, 0) / (prevDay.length || 1);
+  const dates    = [...new Set(lastData.map(d => d.data))].sort();
+  const avgPrev  = (() => { const p = lastData.filter(d => d.data === dates[dates.length-2]); return p.length ? p.reduce((s,d)=>s+d.preco_kg,0)/p.length : 0; })();
   const trend    = avgPrev ? ((avgLast - avgPrev) / avgPrev) * 100 : null;
 
   renderKpis('brasil-kpis', [
@@ -609,40 +632,83 @@ async function loadBrasil() {
     { label: 'Registros', value: data.length, unit: 'histórico' },
   ]);
 
-  // Filter chips por ano
-  const anos = [...new Set(data.map(d => d.ano))].sort((a,b) => b-a);
+  // ── SELECT de região para histórico ──
+  const selReg = document.getElementById('brasil-regiao-select');
+  selReg.innerHTML = regioes.map(r => `<option value="${r}">${r}</option>`).join('');
+  selReg.addEventListener('change', () => drawBrasilHistorico(data, anos, selReg.value));
+  drawBrasilHistorico(data, anos, regioes[0]);
+
+  // ── Últimas 4 semanas ──
+  drawBrasilUlt4sem(data, regioes, curAno);
+
+  // ── Evolução semanal por região (filtro por ano) ──
   let activeAno = curAno;
   const filterEl = document.getElementById('brasil-filter');
-  filterEl.innerHTML = anos.map(a => `<div class="filter-chip ${a === curAno ? 'active' : ''}" data-ano="${a}">${a}</div>`).join('');
+  filterEl.innerHTML = [...anos].reverse().map(a =>
+    `<div class="filter-chip ${a===curAno?'active':''}" data-ano="${a}">${a}</div>`).join('');
   filterEl.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
     filterEl.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
     c.classList.add('active');
     activeAno = +c.dataset.ano;
     drawBrasil(data, regioes, activeAno);
   }));
-
   drawBrasil(data, regioes, activeAno);
 }
 
+// Histórico comparativo: uma linha por ano, eixo X = semana ISO
+function drawBrasilHistorico(data, anos, regiao) {
+  const filtered = data.filter(d => d.regiao === regiao);
+  // Semanas presentes em qualquer ano
+  const semanas = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
+  const datasets = anos.map((ano, i) =>
+    lineDs(String(ano), semanas.map(s => {
+      const rows = filtered.filter(d => d.ano === ano && d.semana === s);
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_kg,0)/rows.length).toFixed(3) : null;
+    }), PALETTE[i % PALETTE.length])
+  );
+  mkChart('chartBrasilHistorico', {
+    type: 'line',
+    data: { labels: semanas.map(s=>`S${s}`), datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}}, scales:scalesLine,
+      spanGaps: true }
+  });
+}
+
+// Últimas 4 semanas: barras agrupadas por região
+function drawBrasilUlt4sem(data, regioes, curAno) {
+  const curData = data.filter(d => d.ano === curAno);
+  const semanas = [...new Set(curData.map(d => d.semana))].sort((a,b)=>b-a).slice(0,4).reverse();
+  const labels  = semanas.map(s => `Sem ${s}`);
+  const datasets = regioes.map((reg, i) =>
+    barDs(reg, semanas.map(s => {
+      const rows = curData.filter(d => d.semana === s && d.regiao === reg);
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_kg,0)/rows.length).toFixed(2) : 0;
+    }), PALETTE[i % PALETTE.length])
+  );
+  mkChart('chartBrasilUlt4sem', {
+    type: 'bar',
+    data: { labels, datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+  });
+}
+
 function drawBrasil(data, regioes, ano) {
-  // Agrupa por semana, calcula média de preco_kg por regiao
   const filtered = data.filter(d => d.ano === ano);
   const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
-  const labels   = semanas.map(s => `S${s}`);
-
   const datasets = regioes.map((reg, i) =>
     lineDs(reg, semanas.map(s => {
       const rows = filtered.filter(d => d.semana === s && d.regiao === reg);
-      if (!rows.length) return null;
-      return +(rows.reduce((sum,d) => sum + d.preco_kg, 0) / rows.length).toFixed(3);
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_kg,0)/rows.length).toFixed(3) : null;
     }), PALETTE[i % PALETTE.length])
   );
-
   mkChart('chartBrasil', {
     type: 'line',
-    data: { labels, datasets },
-    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { position: 'bottom' } }, scales: scalesLine }
+    data: { labels: semanas.map(s=>`S${s}`), datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}}, scales:scalesLine }
   });
 }
 
@@ -662,7 +728,8 @@ async function loadChile() {
   data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +d.precio; });
 
   const mercados = [...new Set(data.map(d => d.mercado).filter(Boolean))].sort();
-  const curAno   = Math.max(...data.map(d => d.ano));
+  const anos     = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
+  const curAno   = Math.max(...anos);
   const lastData = data.filter(d => d.ano === curAno);
   const avgPrice = lastData.reduce((s, d) => s + d.precio, 0) / (lastData.length || 1);
   const lastSem  = Math.max(...lastData.map(d => d.semana));
@@ -677,7 +744,15 @@ async function loadChile() {
     { label: 'Ano', value: curAno, unit: '' },
   ]);
 
-  // Line — preço médio semanal
+  // ── SELECT mercado para histórico ──
+  const selMerc = document.getElementById('chile-mercado-select');
+  const todosLabel = 'Todos os mercados';
+  selMerc.innerHTML = `<option value="">${todosLabel}</option>` +
+    mercados.map(m => `<option value="${m}">${m}</option>`).join('');
+  selMerc.addEventListener('change', () => drawChileHistorico(data, anos, selMerc.value));
+  drawChileHistorico(data, anos, '');
+
+  // Line — preço médio semanal (ano atual)
   const semanas = [...new Set(lastData.map(d => d.semana))].sort((a,b) => a-b);
   const avgSem  = semanas.map(s => {
     const r = lastData.filter(d => d.semana === s);
@@ -699,6 +774,23 @@ async function loadChile() {
     data: { labels: mercados, datasets: [barDs('Média CLP/kg', avgMerc, PALETTE[0])] },
     options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}},
       scales: { x:{grid:{color:'rgba(255,255,255,.04)'}}, y:{grid:{display:false}} } }
+  });
+}
+
+function drawChileHistorico(data, anos, mercado) {
+  const filtered = mercado ? data.filter(d => d.mercado === mercado) : data;
+  const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
+  const datasets = anos.map((ano, i) =>
+    lineDs(String(ano), semanas.map(s => {
+      const rows = filtered.filter(d => d.ano === ano && d.semana === s);
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(0) : null;
+    }), PALETTE[i % PALETTE.length])
+  );
+  mkChart('chartChileHistorico', {
+    type: 'line',
+    data: { labels: semanas.map(s=>`S${s}`), datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}}, scales:scalesLine, spanGaps:true }
   });
 }
 

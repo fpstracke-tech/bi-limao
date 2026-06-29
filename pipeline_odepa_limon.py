@@ -41,9 +41,21 @@ OUTPUT_CSV  = "odepa_limon.csv"
 
 
 # ── DOWNLOAD ──────────────────────────────────────────────────────────────────
+BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-CL,es;q=0.9",
+    "Referer": "https://datos.odepa.gob.cl/",
+}
+
+
 def baixar_arquivo(url: str, destino: str = None) -> bytes:
     """Baixa o CSV e salva localmente se destino fornecido. Retorna bytes."""
-    resp = requests.get(url, stream=True, timeout=60)
+    resp = requests.get(url, headers=BROWSER_HEADERS, stream=True, timeout=60)
     resp.raise_for_status()
     total = int(resp.headers.get("content-length", 0))
 
