@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BI Limão — TFruits</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  /* ── RESET & TOKENS ──────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green:        #5EBB5E;
+    --green-light:  #7ECB7E;
+    --green-dim:    rgba(94,187,94,.12);
+    --green-border: rgba(94,187,94,.25);
+    --bg:           #0A0D0A;
+    --bg2:          #0F130F;
+    --surface:      #141914;
+    --surface2:     #1A201A;
+    --border:       rgba(255,255,255,.06);
+    --border-green: rgba(94,187,94,.18);
+    --text:         #F0F4F0;
+    --text-2:       #8A9A8A;
+    --text-3:       #5A6A5A;
+    --radius-card:  1.5rem;
+    --radius-inner: calc(1.5rem - 4px);
+    --font:         'Plus Jakarta Sans', sans-serif;
+    --ease-spring:  cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); overflow-x: hidden; }
+
+  /* ── SCROLLBAR ───────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+  /* ── LAYOUT ──────────────────────────────────────────────────── */
+  .app { display: flex; min-height: 100dvh; }
+
+  /* ── SIDEBAR ─────────────────────────────────────────────────── */
+  .sidebar {
+    width: 220px; min-width: 220px;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    padding: 1.5rem 1rem;
+    position: sticky; top: 0; height: 100dvh;
+    transition: transform .4s var(--ease-spring);
+    z-index: 100;
+  }
+
+  .sidebar-logo {
+    display: flex; align-items: center; gap: .6rem;
+    padding: .6rem .75rem 1.5rem;
+  }
+  .logo-dot {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--green);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; color: #0A0D0A;
+    flex-shrink: 0;
+  }
+  .logo-text { font-size: .8rem; font-weight: 700; letter-spacing: .05em; color: var(--text); line-height: 1.2; }
+  .logo-sub  { font-size: .65rem; color: var(--text-2); font-weight: 400; }
+
+  .nav-section { font-size: .6rem; font-weight: 600; letter-spacing: .15em; color: var(--text-3); text-transform: uppercase; padding: 0 .75rem .5rem; margin-top: .25rem; }
+
+  .nav-item {
+    display: flex; align-items: center; gap: .6rem;
+    padding: .55rem .75rem; border-radius: .75rem; cursor: pointer;
+    font-size: .78rem; font-weight: 500; color: var(--text-2);
+    transition: all .25s var(--ease-spring);
+    margin-bottom: .1rem; user-select: none;
+  }
+  .nav-item:hover { background: var(--green-dim); color: var(--green-light); }
+  .nav-item.active { background: var(--green-dim); color: var(--green); border: 1px solid var(--green-border); }
+  .nav-icon { width: 16px; height: 16px; opacity: .7; flex-shrink: 0; }
+  .nav-item.active .nav-icon { opacity: 1; }
+
+  .sidebar-footer { margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border); }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: .4rem; box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+  .status-label { font-size: .65rem; color: var(--text-2); }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* ── MAIN ────────────────────────────────────────────────────── */
+  .main { flex: 1; overflow-y: auto; padding: 2rem 2rem 3rem; min-width: 0; }
+
+  /* ── PAGE HEADER ─────────────────────────────────────────────── */
+  .page-header { margin-bottom: 2rem; opacity: 0; transform: translateY(12px); animation: fadeUp .5s var(--ease-spring) .05s forwards; }
+  .page-eyebrow {
+    display: inline-flex; align-items: center; gap: .4rem;
+    font-size: .6rem; font-weight: 600; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--green); background: var(--green-dim); border: 1px solid var(--green-border);
+    padding: .25rem .65rem; border-radius: 99px; margin-bottom: .75rem;
+  }
+  .page-title { font-size: 1.6rem; font-weight: 700; color: var(--text); line-height: 1.2; }
+  .page-sub   { font-size: .8rem; color: var(--text-2); margin-top: .3rem; }
+
+  @keyframes fadeUp { to { opacity:1; transform:translateY(0); } }
+
+  /* ── CARDS GRID ──────────────────────────────────────────────── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+
+  /* ── CARD (double-bezel) ─────────────────────────────────────── */
+  .card-shell {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 3px;
+    transition: border-color .3s var(--ease-spring), transform .3s var(--ease-spring);
+    opacity: 0; transform: translateY(16px);
+    animation: fadeUp .5s var(--ease-spring) forwards;
+  }
+  .card-shell:hover { border-color: var(--border-green); transform: translateY(-2px); }
+
+  .card-inner {
+    background: var(--surface2);
+    border-radius: var(--radius-inner);
+    padding: 1.25rem 1.4rem;
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.04);
+    height: 100%;
+  }
+
+  .kpi-label  { font-size: .65rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); margin-bottom: .5rem; }
+  .kpi-value  { font-size: 1.6rem; font-weight: 700; color: var(--text); line-height: 1; }
+  .kpi-unit   { font-size: .7rem; color: var(--text-2); margin-top: .2rem; }
+  .kpi-trend  { display: inline-flex; align-items: center; gap: .2rem; font-size: .65rem; font-weight: 600; margin-top: .4rem; padding: .15rem .4rem; border-radius: 99px; }
+  .kpi-trend.up   { color: #4CAF50; background: rgba(76,175,80,.12); }
+  .kpi-trend.down { color: #EF5350; background: rgba(239,83,80,.12); }
+
+  /* ── CHART CARD ──────────────────────────────────────────────── */
+  .chart-card { margin-bottom: 1.5rem; }
+  .chart-card .card-inner { padding: 1.4rem; }
+  .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.2rem; flex-wrap: wrap; gap: .5rem; }
+  .chart-title { font-size: .9rem; font-weight: 600; color: var(--text); }
+  .chart-wrap  { position: relative; height: 260px; }
+
+  /* ── FILTER BAR ──────────────────────────────────────────────── */
+  .filter-bar { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+  .filter-chip {
+    font-size: .7rem; font-weight: 500; padding: .3rem .7rem; border-radius: 99px; cursor: pointer;
+    border: 1px solid var(--border); color: var(--text-2); background: transparent;
+    transition: all .2s var(--ease-spring);
+  }
+  .filter-chip:hover  { border-color: var(--green-border); color: var(--green); }
+  .filter-chip.active { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+
+  /* ── SELECT ──────────────────────────────────────────────────── */
+  .styled-select {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text-2);
+    font-family: var(--font); font-size: .72rem; padding: .3rem .6rem; border-radius: .5rem;
+    cursor: pointer; outline: none;
+    transition: border-color .2s;
+  }
+  .styled-select:focus { border-color: var(--green-border); }
+  .styled-select option { background: var(--surface2); }
+
+  /* ── TABLE ───────────────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .75rem; }
+  th { padding: .6rem .9rem; text-align: left; font-size: .6rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: .55rem .9rem; border-bottom: 1px solid rgba(255,255,255,.03); color: var(--text-2); white-space: nowrap; }
+  tr:hover td { background: var(--green-dim); color: var(--text); }
+
+  /* ── TABS (page navigation) ──────────────────────────────────── */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── LOADING ─────────────────────────────────────────────────── */
+  .loading { display: flex; align-items: center; justify-content: center; height: 160px; color: var(--text-3); font-size: .8rem; gap: .5rem; }
+  .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--green); border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── CLIMA GRID ──────────────────────────────────────────────── */
+  .clima-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+  .cidade-card .card-inner { display: flex; flex-direction: column; gap: .3rem; }
+  .cidade-nome { font-size: .8rem; font-weight: 600; color: var(--text); }
+  .cidade-temp { font-size: 2rem; font-weight: 700; color: var(--green); line-height: 1; }
+  .cidade-desc { font-size: .7rem; color: var(--text-2); }
+  .cidade-extra { display: flex; gap: .8rem; margin-top: .4rem; }
+  .cidade-extra span { font-size: .65rem; color: var(--text-3); }
+
+  /* ── MOBILE NAV ──────────────────────────────────────────────── */
+  .mobile-bar {
+    display: none; position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
+    background: rgba(20,25,20,.92); backdrop-filter: blur(20px);
+    border: 1px solid var(--border); border-radius: 99px;
+    padding: .5rem .75rem; gap: .25rem; z-index: 200;
+    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  }
+  .mb-item {
+    display: flex; flex-direction: column; align-items: center; gap: .15rem;
+    padding: .4rem .6rem; border-radius: 99px; cursor: pointer;
+    font-size: .55rem; color: var(--text-3); transition: all .2s;
+  }
+  .mb-item.active { color: var(--green); background: var(--green-dim); }
+  .mb-icon { width: 18px; height: 18px; }
+
+  /* ── RESPONSIVE ──────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .mobile-bar { display: flex; }
+    .main { padding: 1.25rem 1rem 5rem; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .chart-wrap { height: 200px; }
+    .page-title { font-size: 1.2rem; }
+    .clima-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ── STAGGER DELAYS ──────────────────────────────────────────── */
+  .card-shell:nth-child(1){animation-delay:.05s}
+  .card-shell:nth-child(2){animation-delay:.1s}
+  .card-shell:nth-child(3){animation-delay:.15s}
+  .card-shell:nth-child(4){animation-delay:.2s}
+  .card-shell:nth-child(5){animation-delay:.25s}
+  .card-shell:nth-child(6){animation-delay:.3s}
+
+  /* ── BADGE ───────────────────────────────────────────────────── */
+  .badge {
+    display: inline-flex; align-items: center;
+    font-size: .6rem; font-weight: 600; padding: .15rem .45rem; border-radius: 99px;
+    background: var(--green-dim); color: var(--green); border: 1px solid var(--green-border);
+  }
+
+  /* ── TWO-COL GRID ────────────────────────────────────────────── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* ── UPDATE TAG ──────────────────────────────────────────────── */
+  #last-update { font-size: .65rem; color: var(--text-3); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ══ SIDEBAR ════════════════════════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-dot">T</div>
+      <div>
+        <div class="logo-text">TFruits</div>
+        <div class="logo-sub">BI Limão</div>
+      </div>
+    </div>
+
+    <div class="nav-section">Mercados</div>
+    <div class="nav-item active" data-page="brasil">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-4"/></svg>
+      Preços Brasil
+    </div>
+    <div class="nav-item" data-page="chile">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 12l3-3 4 4 3-6"/></svg>
+      Preços Chile
+    </div>
+    <div class="nav-item" data-page="europa">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a13.8 13.8 0 0 1 0 18M12 3a13.8 13.8 0 0 0 0 18"/></svg>
+      Preços Europa
+    </div>
+
+    <div class="nav-section" style="margin-top:.75rem">Clima</div>
+    <div class="nav-item" data-page="clima-local">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 0 1 0 9z"/></svg>
+      Clima Local
+    </div>
+    <div class="nav-item" data-page="clima-global">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
+      Clima Global
+    </div>
+
+    <div class="nav-section" style="margin-top:.75rem">Logística</div>
+    <div class="nav-item" data-page="share">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 21H3V3"/><rect x="7" y="10" width="4" height="11"/><rect x="13" y="6" width="4" height="15"/></svg>
+      Share Brasil
+    </div>
+    <div class="nav-item" data-page="containers">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
+      Containers
+    </div>
+
+    <div class="sidebar-footer">
+      <span class="status-dot"></span>
+      <span class="status-label" id="last-update">Carregando…</span>
+    </div>
+  </aside>
+
+  <!-- ══ MAIN ═══════════════════════════════════════════════════ -->
+  <main class="main">
+
+    <!-- ── BRASIL ──────────────────────────────────────────────── -->
+    <section class="page active" id="page-brasil">
+      <div class="page-header">
+        <div class="page-eyebrow">🇧🇷 HF Brasil</div>
+        <div class="page-title">Preços Brasil</div>
+        <div class="page-sub">Lima Ácida Tahiti — R$/caixa 4,5 kg por região</div>
+      </div>
+      <div class="kpi-grid" id="brasil-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
+      <div class="card-shell chart-card">
+        <div class="card-inner">
+          <div class="chart-header">
+            <span class="chart-title">Evolução Semanal por Região</span>
+            <div class="filter-bar" id="brasil-filter"></div>
+          </div>
+          <div class="chart-wrap"><canvas id="chartBrasil"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── CHILE ───────────────────────────────────────────────── -->
+    <section class="page" id="page-chile">
+      <div class="page-header">
+        <div class="page-eyebrow">🇨🇱 ODEPA</div>
+        <div class="page-title">Preços Chile</div>
+        <div class="page-sub">Limón — CLP/kg por mercado</div>
+      </div>
+      <div class="kpi-grid" id="chile-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
+      <div class="two-col">
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Evolução Semanal</span></div>
+            <div class="chart-wrap"><canvas id="chartChileLine"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Média por Mercado</span></div>
+            <div class="chart-wrap"><canvas id="chartChileBar"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── EUROPA ──────────────────────────────────────────────── -->
+    <section class="page" id="page-europa">
+      <div class="page-header">
+        <div class="page-eyebrow">🇪🇺 FranceAgriMer</div>
+        <div class="page-title">Preços Europa</div>
+        <div class="page-sub">LIME Brasil — €/cx 4,5 kg (marítimo)</div>
+      </div>
+      <div class="kpi-grid" id="europa-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
+      <div class="two-col">
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Preço Médio Semanal</span></div>
+            <div class="chart-wrap"><canvas id="chartEuropaLine"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Média por Mercado</span></div>
+            <div class="chart-wrap"><canvas id="chartEuropaBar"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── CLIMA LOCAL ─────────────────────────────────────────── -->
+    <section class="page" id="page-clima-local">
+      <div class="page-header">
+        <div class="page-eyebrow">🌤 HG Brasil</div>
+        <div class="page-title">Clima Local</div>
+        <div class="page-sub">Condições atuais nas regiões produtoras de limão</div>
+      </div>
+      <div class="clima-grid" id="clima-cards"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
+      <div class="card-shell chart-card" style="margin-top:1.5rem">
+        <div class="card-inner">
+          <div class="chart-header"><span class="chart-title">Previsão 7 dias — Temperatura máx.</span>
+            <select class="styled-select" id="clima-cidade-select"></select>
+          </div>
+          <div class="chart-wrap"><canvas id="chartClimaFc"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── CLIMA GLOBAL ────────────────────────────────────────── -->
+    <section class="page" id="page-clima-global">
+      <div class="page-header">
+        <div class="page-eyebrow">🌍 OpenWeatherMap</div>
+        <div class="page-title">Clima Global</div>
+        <div class="page-sub">Previsão 5 dias nos principais mercados de destino</div>
+      </div>
+      <div class="card-shell chart-card">
+        <div class="card-inner">
+          <div class="chart-header">
+            <span class="chart-title">Temperatura — Próximos 5 dias</span>
+            <select class="styled-select" id="global-cidade-select"></select>
+          </div>
+          <div class="chart-wrap"><canvas id="chartGlobal"></canvas></div>
+        </div>
+      </div>
+      <div class="card-shell chart-card">
+        <div class="card-inner">
+          <div class="chart-header"><span class="chart-title">Chuva acumulada (mm)</span></div>
+          <div class="chart-wrap" style="height:180px"><canvas id="chartGlobalChuva"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SHARE BRASIL ────────────────────────────────────────── -->
+    <section class="page" id="page-share">
+      <div class="page-header">
+        <div class="page-eyebrow">📦 Comexstat MDIC</div>
+        <div class="page-title">Share Brasil</div>
+        <div class="page-sub">Exportações de Limão Tahiti (NCM 08055000) por país</div>
+      </div>
+      <div class="kpi-grid" id="share-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
+      <div class="two-col">
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Volume kg — Top 10 países</span></div>
+            <div class="chart-wrap"><canvas id="chartShareBar"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Exportações mensais (kg)</span>
+              <select class="styled-select" id="share-ano-select"></select>
+            </div>
+            <div class="chart-wrap"><canvas id="chartShareLine"></canvas></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-shell" style="margin-top:1rem">
+        <div class="card-inner">
+          <div class="chart-header" style="margin-bottom:.8rem"><span class="chart-title">Tabela por país / mês</span>
+            <select class="styled-select" id="share-table-ano"></select>
+          </div>
+          <div class="table-wrap"><table id="share-table"><thead></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── CONTAINERS ──────────────────────────────────────────── -->
+    <section class="page" id="page-containers">
+      <div class="page-header">
+        <div class="page-eyebrow">🚢 Aschenberg</div>
+        <div class="page-title">Containers</div>
+        <div class="page-sub">Shipped &amp; Arrivals — Brasil → Europa</div>
+      </div>
+      <div class="kpi-grid" id="cont-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
+      <div class="card-shell chart-card">
+        <div class="card-inner">
+          <div class="chart-header"><span class="chart-title">Shipped vs Arrivals — semanal</span>
+            <select class="styled-select" id="cont-ano-select"></select>
+          </div>
+          <div class="chart-wrap"><canvas id="chartCont"></canvas></div>
+        </div>
+      </div>
+      <div class="card-shell" style="margin-top:1rem">
+        <div class="card-inner">
+          <div class="table-wrap"><table id="cont-table"><thead></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ── MOBILE BOTTOM NAV ──────────────────────────────────────── -->
+<div class="mobile-bar">
+  <div class="mb-item active" data-page="brasil">
+    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-4"/></svg>BR
+  </div>
+  <div class="mb-item" data-page="chile">
+    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 12l3-3 4 4 3-6"/></svg>CL
+  </div>
+  <div class="mb-item" data-page="europa">
+    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8"/></svg>EU
+  </div>
+  <div class="mb-item" data-page="clima-local">
+    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 0 1 0 9z"/></svg>☁
+  </div>
+  <div class="mb-item" data-page="share">
+    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/></svg>📦
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════════
+const SUPA_URL  = 'https://lrxqsrfjisauvdcwaydr.supabase.co';
+const SUPA_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxyeHFzcmZqaXNhdXZkY3dheWRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTg2NDAsImV4cCI6MjA5ODI5NDY0MH0.BvrNvQhAGBji0de7Y5t-EwL1qpbYNDvImYzKmcgd31o';
+
+const PALETTE = ['#5EBB5E','#7ECB7E','#A0DA80','#C8EDA0','#3A9B3A','#267A26','#F0C040','#F08040','#8080E0','#E08080','#40C0C0'];
+
+Chart.defaults.color          = '#5A6A5A';
+Chart.defaults.borderColor    = 'rgba(255,255,255,.05)';
+Chart.defaults.font.family    = "'Plus Jakarta Sans', sans-serif";
+Chart.defaults.font.size      = 11;
+Chart.defaults.plugins.legend.labels.boxWidth = 10;
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+
+// ═══════════════════════════════════════════════════════════════
+// SUPABASE FETCH
+// ═══════════════════════════════════════════════════════════════
+async function sbFetch(table, params = {}) {
+  const url = new URL(`${SUPA_URL}/rest/v1/${table}`);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const r = await fetch(url, { headers: { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}` } });
+  if (!r.ok) throw new Error(`${table}: ${r.status}`);
+  return r.json();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════════════
+let activePage = 'brasil';
+const loaded   = {};
+
+function navigate(page) {
+  if (page === activePage) return;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item, .mb-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
+  document.getElementById(`page-${page}`).classList.add('active');
+  activePage = page;
+  if (!loaded[page]) { loaded[page] = true; loadPage(page); }
+}
+
+document.querySelectorAll('[data-page]').forEach(el => el.addEventListener('click', () => navigate(el.dataset.page)));
+
+// ═══════════════════════════════════════════════════════════════
+// CHART FACTORY
+// ═══════════════════════════════════════════════════════════════
+const charts = {};
+function mkChart(id, cfg) {
+  if (charts[id]) charts[id].destroy();
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  charts[id] = new Chart(ctx, cfg);
+  return charts[id];
+}
+
+function lineDs(label, data, color, fill = false) {
+  return {
+    label, data, borderColor: color, backgroundColor: fill ? color + '22' : 'transparent',
+    borderWidth: 2, pointRadius: 2, pointHoverRadius: 5, tension: .4, fill
+  };
+}
+
+function barDs(label, data, color) {
+  return {
+    label, data, backgroundColor: color + 'BB', borderColor: color,
+    borderWidth: 1, borderRadius: 6, borderSkipped: false
+  };
+}
+
+const scalesLine = {
+  x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { maxRotation: 45 } },
+  y: { grid: { color: 'rgba(255,255,255,.04)' } }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// KPI BUILDER
+// ═══════════════════════════════════════════════════════════════
+function renderKpis(containerId, kpis) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = kpis.map((k, i) => `
+    <div class="card-shell" style="animation-delay:${i * .06}s">
+      <div class="card-inner">
+        <div class="kpi-label">${k.label}</div>
+        <div class="kpi-value">${k.value}</div>
+        <div class="kpi-unit">${k.unit || ''}</div>
+        ${k.trend != null ? `<div class="kpi-trend ${k.trend >= 0 ? 'up' : 'down'}">${k.trend >= 0 ? '▲' : '▼'} ${Math.abs(k.trend).toFixed(1)}%</div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── BRASIL ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadBrasil() {
+  const data = await sbFetch('brasil_precos', {
+    select: 'semana,ano,data_semana,regiao,preco_4_5kg',
+    order: 'ano.asc,semana.asc',
+    limit: 2000
+  });
+
+  const regioes = [...new Set(data.map(d => d.regiao))].sort();
+  const curAno  = Math.max(...data.map(d => d.ano));
+  const semanas = [...new Set(data.filter(d => d.ano === curAno).map(d => d.semana))].sort((a,b) => a-b);
+
+  // KPIs
+  const lastSem  = semanas[semanas.length - 1];
+  const lastData = data.filter(d => d.ano === curAno && d.semana === lastSem);
+  const avgLast  = lastData.reduce((s, d) => s + +d.preco_4_5kg, 0) / (lastData.length || 1);
+  const prevData = data.filter(d => d.ano === curAno && d.semana === lastSem - 1);
+  const avgPrev  = prevData.reduce((s, d) => s + +d.preco_4_5kg, 0) / (prevData.length || 1);
+  const trend    = avgPrev ? ((avgLast - avgPrev) / avgPrev) * 100 : null;
+
+  renderKpis('brasil-kpis', [
+    { label: 'Semana atual', value: `S${lastSem}/${curAno}`, unit: '' },
+    { label: 'Preço médio', value: `R$ ${avgLast.toFixed(2)}`, unit: 'cx 4,5 kg', trend },
+    { label: 'Regiões', value: regioes.length, unit: 'monitoradas' },
+    { label: 'Registros', value: data.length, unit: 'histórico' },
+  ]);
+
+  // Filter chips por ano
+  const anos = [...new Set(data.map(d => d.ano))].sort((a,b) => b-a);
+  let activeAno = curAno;
+  const filterEl = document.getElementById('brasil-filter');
+  filterEl.innerHTML = anos.map(a => `<div class="filter-chip ${a === curAno ? 'active' : ''}" data-ano="${a}">${a}</div>`).join('');
+  filterEl.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
+    filterEl.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
+    c.classList.add('active');
+    activeAno = +c.dataset.ano;
+    drawBrasil(data, regioes, activeAno);
+  }));
+
+  drawBrasil(data, regioes, activeAno);
+}
+
+function drawBrasil(data, regioes, ano) {
+  const filtered = data.filter(d => d.ano === ano);
+  const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
+  const labels   = semanas.map(s => `S${s}`);
+
+  const datasets = regioes.map((reg, i) =>
+    lineDs(reg, semanas.map(s => {
+      const r = filtered.find(d => d.semana === s && d.regiao === reg);
+      return r ? +r.preco_4_5kg : null;
+    }), PALETTE[i % PALETTE.length])
+  );
+
+  mkChart('chartBrasil', {
+    type: 'line',
+    data: { labels, datasets },
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom' } }, scales: scalesLine }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── CHILE ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadChile() {
+  const data = await sbFetch('chile_precos', {
+    select: 'fecha,semana,ano,mercado,precio',
+    order: 'fecha.asc',
+    limit: 3000
+  });
+
+  const mercados = [...new Set(data.map(d => d.mercado))].sort();
+  const curAno   = Math.max(...data.map(d => d.ano));
+  const lastData = data.filter(d => d.ano === curAno);
+  const avgPrice = lastData.reduce((s, d) => s + +d.precio, 0) / (lastData.length || 1);
+
+  renderKpis('chile-kpis', [
+    { label: 'Preço médio', value: `${Math.round(avgPrice).toLocaleString()}`, unit: 'CLP/kg' },
+    { label: 'Mercados', value: mercados.length, unit: 'monitorados' },
+    { label: 'Registros', value: data.length, unit: 'histórico' },
+    { label: 'Ano', value: curAno, unit: '' },
+  ]);
+
+  // Line — preço médio semanal
+  const semanas = [...new Set(data.filter(d=>d.ano===curAno).map(d=>d.semana))].sort((a,b)=>a-b);
+  const avgSem  = semanas.map(s => {
+    const r = data.filter(d => d.ano===curAno && d.semana===s);
+    return r.length ? r.reduce((acc,d)=>acc+ +d.precio,0)/r.length : null;
+  });
+  mkChart('chartChileLine', {
+    type: 'line',
+    data: { labels: semanas.map(s=>`S${s}`), datasets: [lineDs('CLP/kg médio', avgSem, PALETTE[0], true)] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:scalesLine }
+  });
+
+  // Bar — média por mercado
+  const avgMerc = mercados.map(m => {
+    const r = data.filter(d=>d.mercado===m);
+    return r.length ? r.reduce((a,d)=>a+ +d.precio,0)/r.length : 0;
+  });
+  mkChart('chartChileBar', {
+    type: 'bar',
+    data: { labels: mercados, datasets: [barDs('Média CLP/kg', avgMerc, PALETTE[0])] },
+    options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales: { x:{grid:{color:'rgba(255,255,255,.04)'}}, y:{grid:{display:false}} } }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── EUROPA ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadEuropa() {
+  const [data, view] = await Promise.all([
+    sbFetch('europa_precos', { select: 'semana,ano,ano_semana,mercado,preco_4_5kg', order:'ano.asc,semana.asc', limit:2000 }),
+    sbFetch('v_europa_preco_medio_semanal', { order:'ano.asc,semana.asc', limit:500 })
+  ]);
+
+  const curAno = Math.max(...data.map(d=>d.ano));
+  const lastSem = Math.max(...data.filter(d=>d.ano===curAno).map(d=>d.semana));
+  const lastData = data.filter(d=>d.ano===curAno && d.semana===lastSem);
+  const avgLast  = lastData.reduce((s,d)=>s+ +d.preco_4_5kg,0)/(lastData.length||1);
+  const mercados = [...new Set(data.map(d=>d.mercado))].sort();
+
+  renderKpis('europa-kpis', [
+    { label: `Sem ${lastSem}/${curAno}`, value: `€ ${avgLast.toFixed(2)}`, unit: 'cx 4,5 kg' },
+    { label: 'Mercados', value: mercados.length, unit: 'monitorados' },
+    { label: 'Registros', value: data.length, unit: 'histórico' },
+    { label: 'Fonte', value: 'FranceAgriMer', unit: 'marítimo' },
+  ]);
+
+  // Line — preço médio view
+  const viewCurAno = view.filter(v=>v.ano===curAno);
+  mkChart('chartEuropaLine', {
+    type: 'line',
+    data: { labels: viewCurAno.map(v=>`S${v.semana}`), datasets: [lineDs('€/cx 4,5kg', viewCurAno.map(v=>+v.preco_medio_4_5kg), PALETTE[0], true)] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:scalesLine }
+  });
+
+  // Bar — média por mercado
+  const avgMerc = mercados.map(m => {
+    const r = data.filter(d=>d.mercado===m);
+    return r.length ? r.reduce((a,d)=>a+ +d.preco_4_5kg,0)/r.length : 0;
+  });
+  mkChart('chartEuropaBar', {
+    type: 'bar',
+    data: { labels: mercados, datasets: [barDs('€ médio cx4,5kg', avgMerc, PALETTE[2])] },
+    options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales: { x:{grid:{color:'rgba(255,255,255,.04)'}}, y:{grid:{display:false}} } }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── CLIMA LOCAL ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadClimaLocal() {
+  const [atual, forecast] = await Promise.all([
+    sbFetch('clima_brasil_atual', { select:'cidade,data_ref,temp_c,humidade_pct,chuva_mm,descricao,vento_kmh', order:'extracted_at.desc', limit:50 }),
+    sbFetch('clima_brasil_forecast', { select:'cidade,data_previsao,temp_max,temp_min,chuva_mm,prob_chuva_pct,descricao', order:'data_previsao.asc', limit:200 })
+  ]);
+
+  // Pega snapshot mais recente por cidade
+  const seen = {}; const latest = [];
+  for (const r of atual) { if (!seen[r.cidade]) { seen[r.cidade]=true; latest.push(r); } }
+
+  const container = document.getElementById('clima-cards');
+  container.innerHTML = '';
+  latest.forEach((c, i) => {
+    const div = document.createElement('div');
+    div.className = 'card-shell cidade-card';
+    div.style.animationDelay = `${i * .07}s`;
+    div.innerHTML = `<div class="card-inner">
+      <div class="cidade-nome">${c.cidade}</div>
+      <div class="cidade-temp">${c.temp_c}°</div>
+      <div class="cidade-desc">${c.descricao || ''}</div>
+      <div class="cidade-extra">
+        <span>💧 ${c.humidade_pct || 0}%</span>
+        <span>🌧 ${c.chuva_mm || 0}mm</span>
+        <span>💨 ${c.vento_kmh || '—'}</span>
+      </div>
+    </div>`;
+    container.appendChild(div);
+  });
+
+  // Select de cidade pro forecast
+  const cidades = [...new Set(forecast.map(f=>f.cidade))].sort();
+  const sel = document.getElementById('clima-cidade-select');
+  sel.innerHTML = cidades.map(c=>`<option value="${c}">${c}</option>`).join('');
+  sel.addEventListener('change', () => drawClimaFc(forecast, sel.value));
+  if (cidades.length) drawClimaFc(forecast, cidades[0]);
+}
+
+function drawClimaFc(forecast, cidade) {
+  const fc = forecast.filter(f=>f.cidade===cidade).slice(0,7);
+  const labels = fc.map(f=>f.data_previsao.slice(5)); // MM-DD
+  mkChart('chartClimaFc', {
+    type: 'bar',
+    data: { labels, datasets: [
+      barDs('Temp Máx °C', fc.map(f=>f.temp_max), PALETTE[0]),
+      lineDs('Chuva mm', fc.map(f=>+f.chuva_mm), PALETTE[6]),
+    ]},
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── CLIMA GLOBAL ─────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadClimaGlobal() {
+  const data = await sbFetch('clima_forecast', {
+    select:'cidade,pais,data_hora,temp_c,chuva_mm',
+    order:'data_hora.asc', limit:500
+  });
+
+  const cidades = [...new Set(data.map(d=>`${d.cidade} (${d.pais})`))].sort();
+  const sel = document.getElementById('global-cidade-select');
+  sel.innerHTML = cidades.map(c=>`<option>${c}</option>`).join('');
+
+  function drawGlobal(cidadeLabel) {
+    const [cidade, pais] = cidadeLabel.replace(')', '').split(' (');
+    const fc = data.filter(d=>d.cidade===cidade && d.pais===pais);
+    // Agrupa por dia
+    const byDay = {};
+    fc.forEach(f => { const d = f.data_hora.slice(0,10); if(!byDay[d]) byDay[d]={temps:[],chuva:0}; byDay[d].temps.push(f.temp_c); byDay[d].chuva += +f.chuva_mm; });
+    const days = Object.keys(byDay).sort();
+    const labels = days.map(d=>d.slice(5));
+    const avgTemps = days.map(d=>{ const t=byDay[d].temps; return Math.round(t.reduce((a,b)=>a+b,0)/t.length); });
+    const chuvas   = days.map(d=>byDay[d].chuva.toFixed(1));
+
+    mkChart('chartGlobal', {
+      type:'line',
+      data:{ labels, datasets:[lineDs(`Temp °C — ${cidade}`, avgTemps, PALETTE[0], true)] },
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:scalesLine}
+    });
+    mkChart('chartGlobalChuva', {
+      type:'bar',
+      data:{ labels, datasets:[barDs('Chuva mm', chuvas, PALETTE[6])] },
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,.04)'}}}}
+    });
+  }
+
+  sel.addEventListener('change', ()=>drawGlobal(sel.value));
+  if (cidades.length) drawGlobal(cidades[0]);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── SHARE BRASIL ─────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadShare() {
+  const data = await sbFetch('comexstat_exportacoes', {
+    select:'ano,mes,pais,kg_liquido,valor_usd',
+    order:'ano.asc,mes.asc', limit:5000
+  });
+
+  const anos   = [...new Set(data.map(d=>d.ano))].sort((a,b)=>b-a);
+  const curAno = anos[0];
+  const totalKg  = data.filter(d=>d.ano===curAno).reduce((s,d)=>s+ +d.kg_liquido,0);
+  const totalUSD = data.filter(d=>d.ano===curAno).reduce((s,d)=>s+ +d.valor_usd,0);
+  const paises   = [...new Set(data.map(d=>d.pais))].length;
+
+  renderKpis('share-kpis', [
+    { label: `Kg exportados ${curAno}`, value: (totalKg/1e6).toFixed(1)+'M', unit: 'kg líquido' },
+    { label: `USD FOB ${curAno}`, value: '$'+(totalUSD/1e6).toFixed(1)+'M', unit: 'valor FOB' },
+    { label: 'Países destino', value: paises, unit: 'histórico' },
+    { label: 'NCM', value: '08055000', unit: 'Limão Tahiti' },
+  ]);
+
+  // Bar — top 10 por kg
+  const byPais = {};
+  data.filter(d=>d.ano===curAno).forEach(d=>{ byPais[d.pais]=(byPais[d.pais]||0)+ +d.kg_liquido; });
+  const top10 = Object.entries(byPais).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  mkChart('chartShareBar', {
+    type:'bar',
+    data:{ labels:top10.map(([p])=>p), datasets:[barDs('kg líquido', top10.map(([,v])=>v), PALETTE[0])] },
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'}},y:{grid:{display:false}}}}
+  });
+
+  // Line + Ano select
+  const selAno  = document.getElementById('share-ano-select');
+  const selAnot = document.getElementById('share-table-ano');
+  selAno.innerHTML = selAnot.innerHTML = anos.map(a=>`<option value="${a}">${a}</option>`).join('');
+  function drawShareLine(ano) {
+    const meses = [1,2,3,4,5,6,7,8,9,10,11,12];
+    const MESES_LABEL = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const vals = meses.map(m=>data.filter(d=>d.ano===+ano&&d.mes===m).reduce((s,d)=>s+ +d.kg_liquido,0));
+    mkChart('chartShareLine', {
+      type:'line',
+      data:{ labels:MESES_LABEL, datasets:[lineDs('kg líquido', vals, PALETTE[2], true)] },
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:scalesLine}
+    });
+  }
+  function drawShareTable(ano) {
+    const paisesT = [...new Set(data.filter(d=>d.ano===+ano).map(d=>d.pais))].sort();
+    const meses   = [...new Set(data.filter(d=>d.ano===+ano).map(d=>d.mes))].sort((a,b)=>a-b);
+    const ML      = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const t       = document.getElementById('share-table');
+    t.querySelector('thead').innerHTML = `<tr><th>País</th>${meses.map(m=>`<th>${ML[m-1]}</th>`).join('')}<th>Total</th></tr>`;
+    t.querySelector('tbody').innerHTML = paisesT.map(p=>{
+      const row = meses.map(m=>{ const r=data.find(d=>d.ano===+ano&&d.mes===m&&d.pais===p); return r?Math.round(+r.kg_liquido/1000)+'t':'—'; });
+      const tot = data.filter(d=>d.ano===+ano&&d.pais===p).reduce((s,d)=>s+ +d.kg_liquido,0);
+      return `<tr><td>${p}</td>${row.map(v=>`<td>${v}</td>`).join('')}<td><span class="badge">${Math.round(tot/1000)}t</span></td></tr>`;
+    }).join('');
+  }
+  selAno.addEventListener('change', ()=>drawShareLine(selAno.value));
+  selAnot.addEventListener('change', ()=>drawShareTable(selAnot.value));
+  drawShareLine(curAno); drawShareTable(curAno);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── CONTAINERS ───────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadContainers() {
+  const data = await sbFetch('v_containers_semanal', { order:'year.asc,week.asc', limit:1000 });
+
+  const anos   = [...new Set(data.map(d=>d.year))].sort((a,b)=>b-a);
+  const curAno = anos[0];
+  const shipped  = data.filter(d=>d.year===curAno&&d.flow==='Shipped').reduce((s,d)=>s+ +d.total_containers,0);
+  const arrivals = data.filter(d=>d.year===curAno&&d.flow==='Arrivals').reduce((s,d)=>s+ +d.total_containers,0);
+  const lastWeek = Math.max(...data.filter(d=>d.year===curAno).map(d=>d.week));
+
+  renderKpis('cont-kpis', [
+    { label: `Shipped ${curAno}`, value: Math.round(shipped), unit: "containers 40'" },
+    { label: `Arrivals ${curAno}`, value: Math.round(arrivals), unit: "containers 40'" },
+    { label: 'Última semana', value: `S${lastWeek}`, unit: '' },
+    { label: 'Anos', value: anos.length, unit: 'histórico' },
+  ]);
+
+  const selAno = document.getElementById('cont-ano-select');
+  selAno.innerHTML = anos.map(a=>`<option value="${a}">${a}</option>`).join('');
+
+  function drawCont(ano) {
+    const semanas  = [...new Set(data.filter(d=>d.year===+ano).map(d=>d.week))].sort((a,b)=>a-b);
+    const shippedD = semanas.map(s=>{ const r=data.find(d=>d.year===+ano&&d.week===s&&d.flow==='Shipped'); return r?+r.total_containers:null; });
+    const arrivalsD= semanas.map(s=>{ const r=data.find(d=>d.year===+ano&&d.week===s&&d.flow==='Arrivals'); return r?+r.total_containers:null; });
+    mkChart('chartCont', {
+      type:'bar',
+      data:{ labels:semanas.map(s=>`S${s}`), datasets:[barDs('Shipped',shippedD,PALETTE[0]),barDs('Arrivals',arrivalsD,PALETTE[4])] },
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,.04)'}}}}
+    });
+
+    // Table
+    const t = document.getElementById('cont-table');
+    t.querySelector('thead').innerHTML = `<tr><th>Semana</th><th>Shipped</th><th>Arrivals</th><th>Diferença</th></tr>`;
+    t.querySelector('tbody').innerHTML = semanas.reverse().map(s=>{
+      const sh = data.find(d=>d.year===+ano&&d.week===s&&d.flow==='Shipped');
+      const ar = data.find(d=>d.year===+ano&&d.week===s&&d.flow==='Arrivals');
+      const sv = sh?+sh.total_containers:0, av=ar?+ar.total_containers:0;
+      const diff = sv-av; const cls = diff>=0?'up':'down';
+      return `<tr><td>S${s}/${ano}</td><td>${sv||'—'}</td><td>${av||'—'}</td><td><span class="kpi-trend ${cls}">${diff>=0?'▲':'▼'} ${Math.abs(diff)}</span></td></tr>`;
+    }).join('');
+  }
+  selAno.addEventListener('change', ()=>drawCont(selAno.value));
+  drawCont(curAno);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PAGE LOADER
+// ═══════════════════════════════════════════════════════════════
+async function loadPage(page) {
+  try {
+    if (page==='brasil')       await loadBrasil();
+    else if (page==='chile')   await loadChile();
+    else if (page==='europa')  await loadEuropa();
+    else if (page==='clima-local')  await loadClimaLocal();
+    else if (page==='clima-global') await loadClimaGlobal();
+    else if (page==='share')   await loadShare();
+    else if (page==='containers')   await loadContainers();
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STATUS — última atualização
+// ═══════════════════════════════════════════════════════════════
+async function loadStatus() {
+  try {
+    const rows = await sbFetch('v_ultima_atualizacao', { order:'ultima_atualizacao.desc', limit:1 });
+    if (rows.length) {
+      const d = new Date(rows[0].ultima_atualizacao);
+      document.getElementById('last-update').textContent = `Atualizado ${d.toLocaleDateString('pt-BR')}`;
+    }
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+loaded['brasil'] = true;
+loadBrasil();
+loadStatus();
+</script>
+</body>
+</html>
