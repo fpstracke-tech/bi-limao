@@ -17,14 +17,25 @@ Saída:
 import json
 import csv
 import re
+import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PwTimeout
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
+# Carregar .env local se existir
+_env = Path(__file__).parent / ".env"
+if _env.exists():
+    for _line in _env.read_text(encoding="utf-8").splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            os.environ[_k.strip()] = _v.strip()
+
 URL       = "https://report.aschenberger.com.br"
-USERNAME  = "fesilva"
-PASSWORD  = "e9NJwJ"
+USERNAME  = os.environ.get("ASCHENBERG_USER", "fesilva")
+PASSWORD  = os.environ.get("ASCHENBERG_PASS", "e9NJwJ")
 YEARS     = [2024, 2025, 2026]
 OUTPUT_JSON = "aschenberg_containers.json"
 OUTPUT_CSV  = "aschenberg_containers.csv"

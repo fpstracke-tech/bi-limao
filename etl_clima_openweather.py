@@ -15,11 +15,22 @@ Saída:
 
 import json
 import csv
+import os
 import requests
 from datetime import datetime, timezone
+from pathlib import Path
+
+# Carregar .env local se existir
+_env = Path(__file__).parent / ".env"
+if _env.exists():
+    for _line in _env.read_text(encoding="utf-8").splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            os.environ[_k.strip()] = _v.strip()
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
-OWM_API_KEY = "551acced990d145528dd0febe1a3bf2d"
+OWM_API_KEY = os.environ.get("OWM_API_KEY", "551acced990d145528dd0febe1a3bf2d")
 OWM_URL     = "https://api.openweathermap.org/data/2.5/forecast"
 OUTPUT_CSV  = "clima_forecast.csv"
 OUTPUT_JSON = "clima_forecast.json"
