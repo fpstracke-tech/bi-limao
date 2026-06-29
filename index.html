@@ -426,6 +426,18 @@
           <div class="chart-wrap"><canvas id="chartClimaFc"></canvas></div>
         </div>
       </div>
+      <div class="card-shell chart-card" style="margin-top:1rem">
+        <div class="card-inner">
+          <div class="chart-header">
+            <span class="chart-title">Comparativo todas as cidades — Temp máx. 7 dias</span>
+            <div class="filter-bar" id="clima-all-filter">
+              <div class="filter-chip active" data-metric="temp_max">Temp Máx</div>
+              <div class="filter-chip" data-metric="chuva_mm">Chuva mm</div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="chartClimaAll"></canvas></div>
+        </div>
+      </div>
     </section>
 
     <!-- ── CLIMA GLOBAL ────────────────────────────────────────── -->
@@ -1037,12 +1049,24 @@ async function loadClimaLocal() {
     container.appendChild(div);
   });
 
-  // Select de cidade pro forecast
+  // Select de cidade pro forecast individual
   const cidades = [...new Set(forecast.map(f=>f.cidade))].sort();
   const sel = document.getElementById('clima-cidade-select');
   sel.innerHTML = cidades.map(c=>`<option value="${c}">${c}</option>`).join('');
   sel.addEventListener('change', () => drawClimaFc(forecast, sel.value));
   if (cidades.length) drawClimaFc(forecast, cidades[0]);
+
+  // Gráfico comparativo todas as cidades
+  let metricaAll = 'temp_max';
+  drawClimaAll(forecast, cidades, metricaAll);
+  document.getElementById('clima-all-filter').querySelectorAll('.filter-chip').forEach(c => {
+    c.addEventListener('click', () => {
+      document.getElementById('clima-all-filter').querySelectorAll('.filter-chip').forEach(x=>x.classList.remove('active'));
+      c.classList.add('active');
+      metricaAll = c.dataset.metric;
+      drawClimaAll(forecast, cidades, metricaAll);
+    });
+  });
 }
 
 function drawClimaFc(forecast, cidade) {
@@ -1060,6 +1084,36 @@ function drawClimaFc(forecast, cidade) {
     ]},
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
       plugins:{legend:{position:'bottom'}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+  });
+}
+
+function drawClimaAll(forecast, cidades, metrica) {
+  // Para cada cidade, pega o extracted_at mais recente e os 7 dias de previsão
+  const byCity = {};
+  cidades.forEach(cidade => {
+    const fc = forecast.filter(f=>f.cidade===cidade);
+    const maxExt = fc.reduce((m,f)=>f.extracted_at>m?f.extracted_at:m,'');
+    byCity[cidade] = fc.filter(f=>f.extracted_at===maxExt)
+      .sort((a,b)=>a.data_previsao.localeCompare(b.data_previsao)).slice(0,7);
+  });
+
+  // Labels = datas da primeira cidade disponível
+  const refCidade = cidades.find(c=>byCity[c].length>0);
+  if (!refCidade) return;
+  const labels = byCity[refCidade].map(f=>f.data_previsao.slice(5));
+
+  const datasets = cidades.map((cidade, i) =>
+    lineDs(cidade.split('/')[0], byCity[cidade].map(f=>+(f[metrica]||0)), PALETTE[i%PALETTE.length])
+  );
+
+  const label = metrica==='temp_max' ? 'Temp Máx °C' : 'Chuva mm';
+  mkChart('chartClimaAll', {
+    type: 'line',
+    data: { labels, datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{position:'bottom'},
+        tooltip:{ callbacks:{ label: ctx=>`${ctx.dataset.label}: ${ctx.raw}${metrica==='temp_max'?'°C':'mm'}` }}},
       scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
   });
 }
