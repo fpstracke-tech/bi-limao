@@ -341,14 +341,14 @@
       <div class="page-header">
         <div class="page-eyebrow">🇨🇱 ODEPA</div>
         <div class="page-title">Preços Chile</div>
-        <div class="page-sub">Limón — CLP/kg por mercado</div>
+        <div class="page-sub">Limón — USD/kg por mercado</div>
       </div>
       <div class="kpi-grid" id="chile-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
       <!-- Histórico comparativo por ano -->
       <div class="card-shell chart-card">
         <div class="card-inner">
           <div class="chart-header">
-            <span class="chart-title">Histórico por Ano — Média semanal CLP/kg</span>
+            <span class="chart-title">Histórico por Ano — Média semanal USD/kg</span>
             <select class="styled-select" id="chile-mercado-select"></select>
           </div>
           <div class="chart-wrap"><canvas id="chartChileHistorico"></canvas></div>
@@ -357,7 +357,7 @@
       <div class="two-col" style="margin-top:1rem">
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — CLP/kg</span></div>
+            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — USD/kg</span></div>
             <div class="chart-wrap"><canvas id="chartChileUlt4sem"></canvas></div>
           </div>
         </div>
@@ -491,6 +491,22 @@
         <div class="page-sub">Shipped &amp; Arrivals — Brasil → Europa</div>
       </div>
       <div class="kpi-grid" id="cont-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
+      <!-- Histórico comparativo por ano -->
+      <div class="two-col" style="margin-bottom:1rem">
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Histórico Shipped — containers por ano</span></div>
+            <div class="chart-wrap"><canvas id="chartContShippedHist"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Histórico Arrivals — containers por ano</span></div>
+            <div class="chart-wrap"><canvas id="chartContArrivalsHist"></canvas></div>
+          </div>
+        </div>
+      </div>
+      <!-- Semanal ano corrente -->
       <div class="card-shell chart-card">
         <div class="card-inner">
           <div class="chart-header"><span class="chart-title">Shipped vs Arrivals — semanal</span>
@@ -534,6 +550,18 @@
 // ═══════════════════════════════════════════════════════════════
 const SUPA_URL  = 'https://lrxqsrfjisauvdcwaydr.supabase.co';
 const SUPA_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxyeHFzcmZqaXNhdXZkY3dheWRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTg2NDAsImV4cCI6MjA5ODI5NDY0MH0.BvrNvQhAGBji0de7Y5t-EwL1qpbYNDvImYzKmcgd31o';
+
+// ── Câmbio CLP → USD (atualizado na carga, fallback estático) ──
+let CLP_TO_USD = 1 / 970;   // fallback ~970 CLP/USD (jun 2026)
+(async () => {
+  try {
+    const r = await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'default' });
+    if (r.ok) {
+      const j = await r.json();
+      if (j?.rates?.CLP) CLP_TO_USD = 1 / j.rates.CLP;
+    }
+  } catch (_) { /* usa fallback */ }
+})();
 
 const PALETTE = ['#4CAE4F','#F15A22','#72C875','#F5834E','#A0DA80','#F9AA7A','#3A9B3A','#C84800','#C8EDA0','#FFD0B0','#40C0C0'];
 
@@ -620,6 +648,24 @@ function barDs(label, data, color) {
 const scalesLine = {
   x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { maxRotation: 45 } },
   y: { grid: { color: 'rgba(255,255,255,.04)' } }
+};
+
+const scalesUSD = {
+  x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { maxRotation: 45 } },
+  y: { grid: { color: 'rgba(255,255,255,.04)' },
+       ticks: { callback: v => `$${v.toFixed(2)}` } }
+};
+const tooltipUSD = {
+  callbacks: { label: ctx => ` ${ctx.dataset.label}: $${(+ctx.raw).toFixed(3)}` }
+};
+
+const scalesEUR = {
+  x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { maxRotation: 45 } },
+  y: { grid: { color: 'rgba(255,255,255,.04)' },
+       ticks: { callback: v => `€${v.toFixed(2)}` } }
+};
+const tooltipEUR = {
+  callbacks: { label: ctx => ` ${ctx.dataset.label}: €${(+ctx.raw).toFixed(2)}` }
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -762,8 +808,8 @@ async function loadChile() {
 
   if (!data.length) { pageError('chile-kpis', 'Sem dados'); return; }
 
-  // Normaliza tipos
-  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +d.precio; });
+  // Normaliza tipos + converte CLP → USD
+  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +(+d.precio * CLP_TO_USD).toFixed(4); });
 
   const mercados = [...new Set(data.map(d => d.mercado).filter(Boolean))].sort();
   const anos     = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
@@ -781,7 +827,7 @@ async function loadChile() {
   const topMercado = Object.entries(contagem).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
 
   renderKpis('chile-kpis', [
-    { label: 'Preço médio', value: `${Math.round(avgPrice).toLocaleString('pt-BR')}`, unit: 'CLP/kg', trend },
+    { label: 'Preço médio', value: `US$ ${avgPrice.toFixed(3)}`, unit: 'USD/kg', trend },
     { label: 'Mercados', value: mercados.length, unit: 'monitorados' },
     { label: 'Registros', value: data.length, unit: 'histórico' },
     { label: 'Semana atual', value: lastSem, unit: `/${curAno}` },
@@ -818,14 +864,14 @@ function drawChileHistorico(data, anos, mercado) {
   const datasets = anos.map((ano, i) =>
     lineDs(String(ano), semanas.map(s => {
       const rows = filtered.filter(d => d.ano === ano && d.semana === s);
-      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(0) : null;
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(4) : null;
     }), PALETTE[i % PALETTE.length])
   );
   mkChart('chartChileHistorico', {
     type: 'line',
     data: { labels: semanas.map(s=>`S${s}`), datasets },
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'}}, scales:scalesLine, spanGaps:true }
+      plugins:{legend:{position:'bottom'}, tooltip: tooltipUSD}, scales:scalesUSD, spanGaps:true }
   });
 }
 
@@ -837,15 +883,16 @@ function drawChileUlt4sem(data, mercados, curAno) {
   const datasets = mercados.slice(0,8).map((merc, i) =>
     barDs(merc, semanas.map(s => {
       const rows = curData.filter(d => d.semana === s && d.mercado === merc);
-      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(0) : 0;
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(4) : 0;
     }), PALETTE[i % PALETTE.length])
   );
   mkChart('chartChileUlt4sem', {
     type: 'bar',
     data: { labels, datasets },
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'}},
-      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+      plugins:{legend:{position:'bottom'}, tooltip: tooltipUSD},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
+        ticks:{callback: v => `$${v.toFixed(2)}`}} } }
   });
 }
 
@@ -856,14 +903,14 @@ function drawChileLine(data, mercados, ano) {
   const datasets = mercados.map((merc, i) =>
     lineDs(merc, semanas.map(s => {
       const rows = filtered.filter(d => d.semana === s && d.mercado === merc);
-      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(0) : null;
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(4) : null;
     }), PALETTE[i % PALETTE.length])
   );
   mkChart('chartChileLine', {
     type: 'line',
     data: { labels: semanas.map(s=>`S${s}`), datasets },
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'}}, scales:scalesLine, spanGaps:true }
+      plugins:{legend:{position:'bottom'}, tooltip: tooltipUSD}, scales:scalesUSD, spanGaps:true }
   });
 }
 
@@ -910,7 +957,7 @@ async function loadEuropa() {
     type: 'line',
     data: { labels: todasSemanas.map(s=>`S${s}`), datasets },
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'}}, scales:scalesLine, spanGaps:true }
+      plugins:{legend:{position:'bottom'}, tooltip: tooltipEUR}, scales:scalesEUR, spanGaps:true }
   });
 
   // ── Últimas 4 semanas
@@ -924,8 +971,9 @@ async function loadEuropa() {
         return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : 0;
       }), PALETTE[2])]
     },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
-      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip: tooltipEUR},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
+        ticks:{callback: v => `€${v.toFixed(2)}`}} } }
   });
 
   // ── Evolução semanal com filtro por ano
@@ -952,7 +1000,8 @@ function drawEuropaLine(data, ano) {
   mkChart('chartEuropaLine', {
     type: 'line',
     data: { labels: semanas.map(s=>`S${s}`), datasets: [lineDs('€/cx 4,5kg', vals, PALETTE[2], true)] },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:scalesLine }
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}, tooltip: tooltipEUR}, scales:scalesEUR }
   });
 }
 
@@ -997,7 +1046,11 @@ async function loadClimaLocal() {
 }
 
 function drawClimaFc(forecast, cidade) {
-  const fc = forecast.filter(f=>f.cidade===cidade).slice(0,7);
+  // Pega apenas o extracted_at mais recente para esta cidade
+  const fcCidade = forecast.filter(f=>f.cidade===cidade);
+  const maxExt   = fcCidade.reduce((m,f)=>f.extracted_at>m?f.extracted_at:m,'');
+  const fcLatest = fcCidade.filter(f=>f.extracted_at===maxExt);
+  const fc = fcLatest.sort((a,b)=>a.data_previsao.localeCompare(b.data_previsao)).slice(0,7);
   const labels = fc.map(f=>f.data_previsao.slice(5)); // MM-DD
   mkChart('chartClimaFc', {
     type: 'bar',
@@ -1155,46 +1208,80 @@ async function loadShare() {
 // ── CONTAINERS ───────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════
 async function loadContainers() {
-  const data = await sbFetch('v_containers_semanal', { order:'year.asc,week.asc', limit:1000 });
+  const data = await sbFetch('v_containers_semanal', { order:'year.asc,week.asc' });
 
-  const anos   = [...new Set(data.map(d=>d.year))].sort((a,b)=>b-a);
-  const curAno = anos[0];
-  const shipped  = data.filter(d=>d.year===curAno&&d.flow==='Shipped').reduce((s,d)=>s+ +d.total_containers,0);
-  const arrivals = data.filter(d=>d.year===curAno&&d.flow==='Arrivals').reduce((s,d)=>s+ +d.total_containers,0);
-  const lastWeek = Math.max(...data.filter(d=>d.year===curAno).map(d=>d.week));
+  if (!data.length) { pageError('containers', new Error('Sem dados')); return; }
+
+  data.forEach(d => { d.year = +d.year; d.week = +d.week; d.total_containers = +(d.total_containers||0); });
+
+  const anos     = [...new Set(data.map(d=>d.year))].sort((a,b)=>a-b);
+  const curAno   = Math.max(...anos);
+  const curData  = data.filter(d=>d.year===curAno);
+  const shipped  = data.filter(d=>d.flow==='Shipped');
+  const arrivals = data.filter(d=>d.flow==='Arrivals');
+  const totShip  = curData.filter(d=>d.flow==='Shipped').reduce((s,d)=>s+d.total_containers,0);
+  const totArr   = curData.filter(d=>d.flow==='Arrivals').reduce((s,d)=>s+d.total_containers,0);
+  const lastWeek = Math.max(...curData.map(d=>d.week));
+  const lastShip = curData.find(d=>d.week===lastWeek&&d.flow==='Shipped')?.total_containers||0;
+  const prevShip = curData.find(d=>d.week===lastWeek-1&&d.flow==='Shipped')?.total_containers||0;
+  const trend    = prevShip ? ((lastShip-prevShip)/prevShip)*100 : null;
 
   renderKpis('cont-kpis', [
-    { label: `Shipped ${curAno}`, value: Math.round(shipped), unit: "containers 40'" },
-    { label: `Arrivals ${curAno}`, value: Math.round(arrivals), unit: "containers 40'" },
-    { label: 'Última semana', value: `S${lastWeek}`, unit: '' },
-    { label: 'Anos', value: anos.length, unit: 'histórico' },
+    { label: `Shipped S${lastWeek}`, value: lastShip, unit: `containers ${curAno}`, trend },
+    { label: `Total Shipped ${curAno}`, value: Math.round(totShip), unit: "containers 40'" },
+    { label: `Total Arrivals ${curAno}`, value: Math.round(totArr), unit: "containers 40'" },
+    { label: 'Anos histórico', value: anos.length, unit: 'anos' },
   ]);
 
+  // ── Histórico Shipped — uma linha por ano
+  const allWeeks = [...new Set(data.map(d=>d.week))].sort((a,b)=>a-b);
+  mkChart('chartContShippedHist', {
+    type:'line',
+    data:{ labels: allWeeks.map(w=>`S${w}`),
+      datasets: anos.map((ano,i) => lineDs(String(ano), allWeeks.map(w => {
+        const r = shipped.find(d=>d.year===ano&&d.week===w);
+        return r ? r.total_containers : null;
+      }), PALETTE[i%PALETTE.length])) },
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}},scales:scalesLine,spanGaps:true}
+  });
+
+  // ── Histórico Arrivals — uma linha por ano
+  mkChart('chartContArrivalsHist', {
+    type:'line',
+    data:{ labels: allWeeks.map(w=>`S${w}`),
+      datasets: anos.map((ano,i) => lineDs(String(ano), allWeeks.map(w => {
+        const r = arrivals.find(d=>d.year===ano&&d.week===w);
+        return r ? r.total_containers : null;
+      }), PALETTE[i%PALETTE.length])) },
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}},scales:scalesLine,spanGaps:true}
+  });
+
+  // ── Semanal com select de ano
   const selAno = document.getElementById('cont-ano-select');
-  selAno.innerHTML = anos.map(a=>`<option value="${a}">${a}</option>`).join('');
+  selAno.innerHTML = [...anos].reverse().map(a=>`<option value="${a}" ${a===curAno?'selected':''}>${a}</option>`).join('');
 
   function drawCont(ano) {
-    const semanas  = [...new Set(data.filter(d=>d.year===+ano).map(d=>d.week))].sort((a,b)=>a-b);
-    const shippedD = semanas.map(s=>{ const r=data.find(d=>d.year===+ano&&d.week===s&&d.flow==='Shipped'); return r?+r.total_containers:null; });
-    const arrivalsD= semanas.map(s=>{ const r=data.find(d=>d.year===+ano&&d.week===s&&d.flow==='Arrivals'); return r?+r.total_containers:null; });
+    const semanas   = [...new Set(data.filter(d=>d.year===+ano).map(d=>d.week))].sort((a,b)=>a-b);
+    const shippedD  = semanas.map(w=>{ const r=shipped.find(d=>d.year===+ano&&d.week===w); return r?r.total_containers:null; });
+    const arrivalsD = semanas.map(w=>{ const r=arrivals.find(d=>d.year===+ano&&d.week===w); return r?r.total_containers:null; });
     mkChart('chartCont', {
       type:'bar',
-      data:{ labels:semanas.map(s=>`S${s}`), datasets:[barDs('Shipped',shippedD,PALETTE[0]),barDs('Arrivals',arrivalsD,PALETTE[4])] },
-      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,.04)'}}}}
+      data:{ labels:semanas.map(s=>`S${s}`), datasets:[barDs('Shipped',shippedD,PALETTE[0]),barDs('Arrivals',arrivalsD,PALETTE[1])] },
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'bottom'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,.04)'}}}}
     });
-
-    // Table
     const t = document.getElementById('cont-table');
-    t.querySelector('thead').innerHTML = `<tr><th>Semana</th><th>Shipped</th><th>Arrivals</th><th>Diferença</th></tr>`;
-    t.querySelector('tbody').innerHTML = semanas.reverse().map(s=>{
-      const sh = data.find(d=>d.year===+ano&&d.week===s&&d.flow==='Shipped');
-      const ar = data.find(d=>d.year===+ano&&d.week===s&&d.flow==='Arrivals');
-      const sv = sh?+sh.total_containers:0, av=ar?+ar.total_containers:0;
-      const diff = sv-av; const cls = diff>=0?'up':'down';
-      return `<tr><td>S${s}/${ano}</td><td>${sv||'—'}</td><td>${av||'—'}</td><td><span class="kpi-trend ${cls}">${diff>=0?'▲':'▼'} ${Math.abs(diff)}</span></td></tr>`;
+    t.querySelector('thead').innerHTML = `<tr><th>Semana</th><th>Shipped</th><th>Arrivals</th><th>Saldo</th></tr>`;
+    t.querySelector('tbody').innerHTML = [...semanas].reverse().map(w=>{
+      const sv=shippedD[semanas.indexOf(w)]||0, av=arrivalsD[semanas.indexOf(w)]||0;
+      const diff=sv-av;
+      return `<tr><td>S${w}/${ano}</td><td>${sv||'—'}</td><td>${av||'—'}</td>
+        <td style="color:${diff>=0?'var(--green)':'#EF5350'}">${diff>0?'+':''}${diff}</td></tr>`;
     }).join('');
   }
-  selAno.addEventListener('change', ()=>drawCont(selAno.value));
+  selAno.addEventListener('change', ()=>drawCont(+selAno.value));
   drawCont(curAno);
 }
 
