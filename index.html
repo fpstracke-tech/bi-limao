@@ -459,6 +459,18 @@
           <div class="chart-wrap"><canvas id="chartGlobal"></canvas></div>
         </div>
       </div>
+      <div class="card-shell chart-card" style="margin-top:1rem">
+        <div class="card-inner">
+          <div class="chart-header">
+            <span class="chart-title">Comparativo todas as cidades — 5 dias</span>
+            <div class="filter-bar" id="global-all-filter">
+              <div class="filter-chip active" data-metric="tempMax">Temp Máx</div>
+              <div class="filter-chip" data-metric="chuva">Chuva mm</div>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="chartGlobalAll"></canvas></div>
+        </div>
+      </div>
     </section>
 
     <!-- ── SHARE BRASIL ────────────────────────────────────────── -->
@@ -1193,6 +1205,60 @@ async function loadClimaGlobal() {
 
   sel.addEventListener('change', () => drawGlobal(sel.value));
   if (cidades.length) drawGlobal(cidades[0]);
+
+  // Gráfico comparativo todas as cidades globais
+  let metricaGlobalAll = 'tempMax';
+  drawGlobalAll(data, cidades, metricaGlobalAll);
+  document.getElementById('global-all-filter').querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.getElementById('global-all-filter').querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
+      chip.classList.add('active');
+      metricaGlobalAll = chip.dataset.metric;
+      drawGlobalAll(data, cidades, metricaGlobalAll);
+    });
+  });
+}
+
+function drawGlobalAll(data, cidades, metrica) {
+  // Para cada cidade, agrega por dia (mesmo critério do drawGlobal)
+  const byCity = {};
+  cidades.forEach(key => {
+    const [cidade, pais] = key.split('|');
+    const fc = data.filter(d => d.cidade === cidade && d.pais === pais);
+    const byDay = {};
+    fc.forEach(f => {
+      const d = f.data_hora.slice(0, 10);
+      if (!byDay[d]) byDay[d] = { tempMax: -99, chuva: 0 };
+      byDay[d].tempMax = Math.max(byDay[d].tempMax, +f.temp_max || +f.temp_c);
+      byDay[d].chuva  += +f.chuva_mm;
+    });
+    const days = Object.keys(byDay).sort().slice(0, 5);
+    byCity[key] = days.map(d => ({ day: d, tempMax: byDay[d].tempMax, chuva: +byDay[d].chuva.toFixed(1) }));
+  });
+
+  const refKey = cidades.find(k => byCity[k]?.length > 0);
+  if (!refKey) return;
+  const labels = byCity[refKey].map(r => r.day.slice(5));
+
+  const datasets = cidades.map((key, i) => {
+    const label = key.split('|')[0];
+    const vals  = byCity[key].map(r => r[metrica]);
+    return lineDs(label, vals, PALETTE[i % PALETTE.length]);
+  });
+
+  mkChart('chartGlobalAll', {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}${metrica === 'tempMax' ? '°C' : 'mm'}` }}
+      },
+      scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(255,255,255,.04)' } } }
+    }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
