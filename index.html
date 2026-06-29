@@ -500,7 +500,11 @@ async function sbFetch(table, params = {}) {
   const url = new URL(`${SUPA_URL}/rest/v1/${table}`);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   const r = await fetch(url, { headers: { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}` } });
-  if (!r.ok) throw new Error(`${table}: ${r.status}`);
+  if (!r.ok) {
+    const body = await r.text().catch(() => '');
+    console.error(`[sbFetch] ${table} → HTTP ${r.status}`, body);
+    throw new Error(`${table}: HTTP ${r.status} — ${body.slice(0,120)}`);
+  }
   return r.json();
 }
 
@@ -985,17 +989,35 @@ async function loadContainers() {
 // ═══════════════════════════════════════════════════════════════
 // PAGE LOADER
 // ═══════════════════════════════════════════════════════════════
+function pageError(page, err) {
+  // Mostra erro visível na primeira área carregável da página
+  const targets = {
+    brasil: 'brasil-kpis', chile: 'chile-kpis', europa: 'europa-kpis',
+    'clima-local': 'clima-cards', 'clima-global': 'clima-global-cards',
+    share: 'share-kpis', containers: 'cont-kpis'
+  };
+  const id = targets[page];
+  if (id) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = `<div class="loading" style="color:#f88;flex-direction:column;gap:.5rem">
+      <span>⚠ Erro ao carregar dados</span>
+      <code style="font-size:.65rem;color:#aaa;word-break:break-all">${err.message}</code>
+    </div>`;
+  }
+  console.error(`[loadPage:${page}]`, err);
+}
+
 async function loadPage(page) {
   try {
-    if (page==='brasil')       await loadBrasil();
-    else if (page==='chile')   await loadChile();
-    else if (page==='europa')  await loadEuropa();
+    if (page==='brasil')            await loadBrasil();
+    else if (page==='chile')        await loadChile();
+    else if (page==='europa')       await loadEuropa();
     else if (page==='clima-local')  await loadClimaLocal();
     else if (page==='clima-global') await loadClimaGlobal();
-    else if (page==='share')   await loadShare();
+    else if (page==='share')        await loadShare();
     else if (page==='containers')   await loadContainers();
   } catch(e) {
-    console.error(e);
+    pageError(page, e);
   }
 }
 
