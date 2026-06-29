@@ -1,0 +1,20 @@
+# Credenciais — NUNCA commitar
+.env
+
+# Outputs locais
+*.csv
+*.json
+*.slk
+*.xlsx
+*.xls
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
