@@ -13,6 +13,7 @@ Uso:
 
 import io
 import csv
+import time
 from datetime import datetime, timezone, date
 
 import requests
@@ -29,11 +30,40 @@ OUTPUT_CSV     = "brasil_precos.csv"
 PRODUTO_FILTRO = "Lima Ácida Tahiti"   # substring para filtrar
 
 
+# Headers realistas para evitar bloqueio por bot-detection
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer":         "https://www.hfbrasil.org.br/br/estatistica/preco/preco-semanal.aspx",
+    "Connection":      "keep-alive",
+    "DNT":             "1",
+}
+
+
 # ── FETCH + PARSE ──────────────────────────────────────────────────────────────
 def fetch_hfbrasil() -> list[dict]:
     print("[1] Baixando Excel HF Brasil...")
-    r = requests.get(URL, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.hfbrasil.org.br/"}, timeout=60)
-    r.raise_for_status()
+
+    # Primeiro acessa a página principal para obter cookies de sessão
+    session = requests.Session()
+    session.get("https://www.hfbrasil.org.br/br/estatistica/preco/preco-semanal.aspx",
+                headers=HEADERS, timeout=30)
+    time.sleep(2)
+
+    # Agora faz o download com cookies da sessão
+    r = session.get(URL, headers=HEADERS, timeout=60)
+    if r.status_code == 403:
+        print("    403 na primeira tentativa — aguardando 8s e retentando...")
+        time.sleep(8)
+        r = session.get(URL, headers=HEADERS, timeout=60)
+    if r.status_code != 200:
+        raise requests.HTTPError(f"HTTP {r.status_code} após retry")
 
     df = pd.read_excel(io.BytesIO(r.content), header=None)
     # Linha 0 = cabeçalho
