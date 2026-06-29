@@ -351,14 +351,17 @@
       <div class="two-col" style="margin-top:1rem">
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Evolução Semanal</span></div>
-            <div class="chart-wrap"><canvas id="chartChileLine"></canvas></div>
+            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — CLP/kg</span></div>
+            <div class="chart-wrap"><canvas id="chartChileUlt4sem"></canvas></div>
           </div>
         </div>
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Média por Mercado</span></div>
-            <div class="chart-wrap"><canvas id="chartChileBar"></canvas></div>
+            <div class="chart-header">
+              <span class="chart-title">Evolução Semanal</span>
+              <div class="filter-bar" id="chile-filter"></div>
+            </div>
+            <div class="chart-wrap"><canvas id="chartChileLine"></canvas></div>
           </div>
         </div>
       </div>
@@ -541,7 +544,15 @@ Chart.defaults.plugins.legend.labels.usePointStyle = true;
 async function sbFetch(table, params = {}) {
   const url = new URL(`${SUPA_URL}/rest/v1/${table}`);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const r = await fetch(url, { headers: { apikey: SUPA_ANON, Authorization: `Bearer ${SUPA_ANON}` } });
+  // Prefer: count=none evita overhead; Range-Unit + Range para paginação automática
+  const headers = {
+    apikey: SUPA_ANON,
+    Authorization: `Bearer ${SUPA_ANON}`,
+    'Range-Unit': 'items',
+    'Range': '0-9999',   // até 10k registros numa chamada
+    'Prefer': 'count=none'
+  };
+  const r = await fetch(url, { headers });
   if (!r.ok) {
     const body = await r.text().catch(() => '');
     console.error(`[sbFetch] ${table} → HTTP ${r.status}`, body);
@@ -620,7 +631,7 @@ function renderKpis(containerId, kpis) {
 async function loadBrasil() {
   const data = await sbFetch('brasil_precos', {
     select: 'data,semana,ano,regiao,tipo,preco_kg,preco_4_5kg',
-    order: 'data.asc', limit: 5000
+    order: 'data.asc'
   });
 
   if (!data.length) { document.getElementById('brasil-kpis').innerHTML = '<div class="loading">Sem dados</div>'; return; }
@@ -733,11 +744,10 @@ function drawBrasil(data, regioes, ano) {
 async function loadChile() {
   const data = await sbFetch('chile_precos', {
     select: 'fecha,semana,ano,mercado,precio',
-    order: 'fecha.asc',
-    limit: 3000
+    order: 'fecha.asc'
   });
 
-  if (!data.length) { document.getElementById('chile-kpis').innerHTML = '<div class="loading">Sem dados</div>'; return; }
+  if (!data.length) { pageError('chile-kpis', 'Sem dados'); return; }
 
   // Normaliza tipos
   data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +d.precio; });
@@ -756,40 +766,31 @@ async function loadChile() {
     { label: 'Preço médio', value: `${Math.round(avgPrice).toLocaleString('pt-BR')}`, unit: 'CLP/kg', trend },
     { label: 'Mercados', value: mercados.length, unit: 'monitorados' },
     { label: 'Registros', value: data.length, unit: 'histórico' },
-    { label: 'Ano', value: curAno, unit: '' },
+    { label: 'Semana atual', value: lastSem, unit: `/${curAno}` },
   ]);
 
-  // ── SELECT mercado para histórico ──
+  // ── Histórico comparativo por ano ──
   const selMerc = document.getElementById('chile-mercado-select');
-  const todosLabel = 'Todos os mercados';
-  selMerc.innerHTML = `<option value="">${todosLabel}</option>` +
+  selMerc.innerHTML = `<option value="">Todos os mercados</option>` +
     mercados.map(m => `<option value="${m}">${m}</option>`).join('');
   selMerc.addEventListener('change', () => drawChileHistorico(data, anos, selMerc.value));
   drawChileHistorico(data, anos, '');
 
-  // Line — preço médio semanal (ano atual)
-  const semanas = [...new Set(lastData.map(d => d.semana))].sort((a,b) => a-b);
-  const avgSem  = semanas.map(s => {
-    const r = lastData.filter(d => d.semana === s);
-    return r.length ? +(r.reduce((acc,d) => acc + d.precio, 0) / r.length).toFixed(0) : null;
-  });
-  mkChart('chartChileLine', {
-    type: 'line',
-    data: { labels: semanas.map(s=>`S${s}`), datasets: [lineDs('CLP/kg médio', avgSem, PALETTE[0], true)] },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:scalesLine }
-  });
+  // ── Últimas 4 semanas ──
+  drawChileUlt4sem(data, mercados, curAno);
 
-  // Bar — média por mercado
-  const avgMerc = mercados.map(m => {
-    const r = data.filter(d => d.mercado === m);
-    return r.length ? +(r.reduce((a,d) => a + d.precio, 0) / r.length).toFixed(0) : 0;
-  });
-  mkChart('chartChileBar', {
-    type: 'bar',
-    data: { labels: mercados, datasets: [barDs('Média CLP/kg', avgMerc, PALETTE[0])] },
-    options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}},
-      scales: { x:{grid:{color:'rgba(255,255,255,.04)'}}, y:{grid:{display:false}} } }
-  });
+  // ── Evolução semanal (filtro por ano) ──
+  let activeAno = curAno;
+  const filterEl = document.getElementById('chile-filter');
+  filterEl.innerHTML = [...anos].reverse().map(a =>
+    `<div class="filter-chip ${a===curAno?'active':''}" data-ano="${a}">${a}</div>`).join('');
+  filterEl.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
+    filterEl.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
+    c.classList.add('active');
+    activeAno = +c.dataset.ano;
+    drawChileLine(data, activeAno);
+  }));
+  drawChileLine(data, activeAno);
 }
 
 function drawChileHistorico(data, anos, mercado) {
@@ -809,16 +810,55 @@ function drawChileHistorico(data, anos, mercado) {
   });
 }
 
+// Últimas 4 semanas Chile — barras agrupadas por mercado
+function drawChileUlt4sem(data, mercados, curAno) {
+  const curData = data.filter(d => d.ano === curAno);
+  const semanas = [...new Set(curData.map(d => d.semana))].sort((a,b) => b-a).slice(0,4).reverse();
+  const labels  = semanas.map(s => `Sem ${s}`);
+  const datasets = mercados.slice(0,8).map((merc, i) =>
+    barDs(merc, semanas.map(s => {
+      const rows = curData.filter(d => d.semana === s && d.mercado === merc);
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(0) : 0;
+    }), PALETTE[i % PALETTE.length])
+  );
+  mkChart('chartChileUlt4sem', {
+    type: 'bar',
+    data: { labels, datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+  });
+}
+
+// Evolução semanal Chile por mercado (um ano)
+function drawChileLine(data, ano) {
+  const filtered = data.filter(d => d.ano === ano);
+  const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
+  const mercados = [...new Set(filtered.map(d => d.mercado).filter(Boolean))].sort();
+  const datasets = mercados.slice(0,8).map((merc, i) =>
+    lineDs(merc, semanas.map(s => {
+      const rows = filtered.filter(d => d.semana === s && d.mercado === merc);
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(0) : null;
+    }), PALETTE[i % PALETTE.length])
+  );
+  mkChart('chartChileLine', {
+    type: 'line',
+    data: { labels: semanas.map(s=>`S${s}`), datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}}, scales:scalesLine, spanGaps:true }
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════
 // ── EUROPA ───────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════
 async function loadEuropa() {
   const data = await sbFetch('europa_precos', {
     select: 'semana,ano,mercado,preco_4_5kg',
-    order: 'ano.asc,semana.asc', limit: 2000
+    order: 'ano.asc,semana.asc'
   });
 
-  if (!data.length) { document.getElementById('europa-kpis').innerHTML = '<div class="loading">Sem dados</div>'; return; }
+  if (!data.length) { pageError('europa-kpis', 'Sem dados'); return; }
 
   data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.preco_4_5kg = +d.preco_4_5kg; });
 
