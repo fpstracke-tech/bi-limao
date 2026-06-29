@@ -372,17 +372,30 @@
         <div class="page-sub">LIME Brasil — €/cx 4,5 kg (marítimo)</div>
       </div>
       <div class="kpi-grid" id="europa-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
-      <div class="two-col">
+      <!-- Histórico comparativo por ano -->
+      <div class="card-shell chart-card">
+        <div class="card-inner">
+          <div class="chart-header">
+            <span class="chart-title">Histórico por Ano — €/cx 4,5 kg</span>
+          </div>
+          <div class="chart-wrap"><canvas id="chartEuropaHistorico"></canvas></div>
+        </div>
+      </div>
+      <!-- Últimas 4 semanas + evolução semanal -->
+      <div class="two-col" style="margin-top:1rem">
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Preço Médio Semanal</span></div>
-            <div class="chart-wrap"><canvas id="chartEuropaLine"></canvas></div>
+            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — €/cx 4,5 kg</span></div>
+            <div class="chart-wrap"><canvas id="chartEuropaUlt4sem"></canvas></div>
           </div>
         </div>
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Média por Mercado</span></div>
-            <div class="chart-wrap"><canvas id="chartEuropaBar"></canvas></div>
+            <div class="chart-header">
+              <span class="chart-title">Evolução Semanal</span>
+              <div class="filter-bar" id="europa-filter"></div>
+            </div>
+            <div class="chart-wrap"><canvas id="chartEuropaLine"></canvas></div>
           </div>
         </div>
       </div>
@@ -798,41 +811,88 @@ function drawChileHistorico(data, anos, mercado) {
 // ── EUROPA ───────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════
 async function loadEuropa() {
-  const [data, view] = await Promise.all([
-    sbFetch('europa_precos', { select: 'semana,ano,ano_semana,mercado,preco_4_5kg', order:'ano.asc,semana.asc', limit:2000 }),
-    sbFetch('v_europa_preco_medio_semanal', { order:'ano.asc,semana.asc', limit:500 })
-  ]);
+  const data = await sbFetch('europa_precos', {
+    select: 'semana,ano,mercado,preco_4_5kg',
+    order: 'ano.asc,semana.asc', limit: 2000
+  });
 
-  const curAno = Math.max(...data.map(d=>d.ano));
-  const lastSem = Math.max(...data.filter(d=>d.ano===curAno).map(d=>d.semana));
-  const lastData = data.filter(d=>d.ano===curAno && d.semana===lastSem);
-  const avgLast  = lastData.reduce((s,d)=>s+ +d.preco_4_5kg,0)/(lastData.length||1);
-  const mercados = [...new Set(data.map(d=>d.mercado))].sort();
+  if (!data.length) { document.getElementById('europa-kpis').innerHTML = '<div class="loading">Sem dados</div>'; return; }
+
+  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.preco_4_5kg = +d.preco_4_5kg; });
+
+  const anos    = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
+  const curAno  = Math.max(...anos);
+  const curData = data.filter(d => d.ano === curAno);
+  const sems    = [...new Set(curData.map(d => d.semana))].sort((a,b) => a-b);
+  const lastSem = sems.at(-1);
+  const lastData = curData.filter(d => d.semana === lastSem);
+  const avgLast  = lastData.reduce((s,d) => s + d.preco_4_5kg, 0) / (lastData.length || 1);
+  const prevSem  = sems.at(-2);
+  const avgPrev  = prevSem ? (() => { const p = curData.filter(d=>d.semana===prevSem); return p.reduce((s,d)=>s+d.preco_4_5kg,0)/(p.length||1); })() : 0;
+  const trend    = avgPrev ? ((avgLast - avgPrev) / avgPrev) * 100 : null;
 
   renderKpis('europa-kpis', [
-    { label: `Sem ${lastSem}/${curAno}`, value: `€ ${avgLast.toFixed(2)}`, unit: 'cx 4,5 kg' },
-    { label: 'Mercados', value: mercados.length, unit: 'monitorados' },
-    { label: 'Registros', value: data.length, unit: 'histórico' },
+    { label: `Sem ${lastSem}/${curAno}`, value: `€ ${avgLast.toFixed(2)}`, unit: 'cx 4,5 kg', trend },
+    { label: 'Anos histórico', value: anos.length, unit: 'anos' },
+    { label: 'Registros', value: data.length, unit: 'semanas' },
     { label: 'Fonte', value: 'FranceAgriMer', unit: 'marítimo' },
   ]);
 
-  // Line — preço médio view
-  const viewCurAno = view.filter(v=>v.ano===curAno);
-  mkChart('chartEuropaLine', {
+  // ── Histórico por ano (uma linha por ano)
+  const todasSemanas = [...new Set(data.map(d => d.semana))].sort((a,b) => a-b);
+  const datasets = anos.map((ano, i) =>
+    lineDs(String(ano), todasSemanas.map(s => {
+      const rows = data.filter(d => d.ano === ano && d.semana === s);
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null;
+    }), PALETTE[i % PALETTE.length])
+  );
+  mkChart('chartEuropaHistorico', {
     type: 'line',
-    data: { labels: viewCurAno.map(v=>`S${v.semana}`), datasets: [lineDs('€/cx 4,5kg', viewCurAno.map(v=>+v.preco_medio_4_5kg), PALETTE[0], true)] },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:scalesLine }
+    data: { labels: todasSemanas.map(s=>`S${s}`), datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}}, scales:scalesLine, spanGaps:true }
   });
 
-  // Bar — média por mercado
-  const avgMerc = mercados.map(m => {
-    const r = data.filter(d=>d.mercado===m);
-    return r.length ? r.reduce((a,d)=>a+ +d.preco_4_5kg,0)/r.length : 0;
-  });
-  mkChart('chartEuropaBar', {
+  // ── Últimas 4 semanas
+  const ult4sems = sems.slice(-4);
+  mkChart('chartEuropaUlt4sem', {
     type: 'bar',
-    data: { labels: mercados, datasets: [barDs('€ médio cx4,5kg', avgMerc, PALETTE[2])] },
-    options: { responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales: { x:{grid:{color:'rgba(255,255,255,.04)'}}, y:{grid:{display:false}} } }
+    data: {
+      labels: ult4sems.map(s=>`Sem ${s}`),
+      datasets: [barDs('€/cx 4,5kg', ult4sems.map(s => {
+        const rows = curData.filter(d => d.semana === s);
+        return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : 0;
+      }), PALETTE[2])]
+    },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+  });
+
+  // ── Evolução semanal com filtro por ano
+  let activeAnoEu = curAno;
+  const filterElEu = document.getElementById('europa-filter');
+  filterElEu.innerHTML = [...anos].reverse().map(a =>
+    `<div class="filter-chip ${a===curAno?'active':''}" data-ano="${a}">${a}</div>`).join('');
+  filterElEu.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
+    filterElEu.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
+    c.classList.add('active');
+    activeAnoEu = +c.dataset.ano;
+    drawEuropaLine(data, activeAnoEu);
+  }));
+  drawEuropaLine(data, curAno);
+}
+
+function drawEuropaLine(data, ano) {
+  const filtered = data.filter(d => d.ano === ano);
+  const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
+  const vals     = semanas.map(s => {
+    const rows = filtered.filter(d => d.semana === s);
+    return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null;
+  });
+  mkChart('chartEuropaLine', {
+    type: 'line',
+    data: { labels: semanas.map(s=>`S${s}`), datasets: [lineDs('€/cx 4,5kg', vals, PALETTE[2], true)] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:scalesLine }
   });
 }
 

@@ -28,7 +28,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent
 
 ETLS = [
-    {"name": "HF Brasil",       "script": "etl_hfbrasil.py",              "tag": "brasil"},
+    {"name": "HF Brasil",       "script": "etl_hfbrasil.py",              "tag": "brasil",     "optional": True},
     {"name": "ODEPA Chile",     "script": "pipeline_odepa_limon.py",       "tag": "chile"},
     {"name": "Comexstat",       "script": "etl_comexstat.py",              "tag": "comexstat"},
     {"name": "Aschenberg",      "script": "etl_aschenberg_playwright.py",  "tag": "aschenberg"},
@@ -110,8 +110,18 @@ def main():
         print("\nDetalhes dos erros:")
         for r in results:
             if r["status"] == "ERRO":
-                print(f"  ❌ {r['name']}: {r['msg']}")
-        sys.exit(1)
+                etl_def = next((e for e in ETLS if e["name"] == r["name"]), {})
+                flag = " (opcional — não bloqueia)" if etl_def.get("optional") else ""
+                print(f"  ❌ {r['name']}{flag}: {r['msg']}")
+
+        # Só sai com erro se algum ETL não-opcional falhou
+        critical_errors = sum(
+            1 for r in results
+            if r["status"] == "ERRO"
+            and not next((e for e in ETLS if e["name"] == r["name"]), {}).get("optional")
+        )
+        if critical_errors:
+            sys.exit(1)
 
 
 if __name__ == "__main__":

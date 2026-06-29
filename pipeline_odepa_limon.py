@@ -104,43 +104,84 @@ def ler_csv_robusto(data: bytes) -> pd.DataFrame:
 
 
 # ── TRANSFORM ─────────────────────────────────────────────────────────────────
+def _find_col(df, *candidates):
+    """Retorna o primeiro nome de coluna que existir no df (case-insensitive)."""
+    cols_lower = {c.lower(): c for c in df.columns}
+    for c in candidates:
+        if c.lower() in cols_lower:
+            return cols_lower[c.lower()]
+    return None
+
+
 def transform(df: pd.DataFrame, extracted_at: str) -> list[dict]:
-    if "Producto" not in df.columns:
-        raise KeyError(f"Coluna 'Producto' não encontrada. Colunas: {list(df.columns)}")
+    print(f"    Colunas CSV: {list(df.columns)}")
 
-    df_limon = df[df["Producto"].astype(str).str.upper() == "LIMÓN"].copy()
-    print(f"    Registros LIMÓN: {len(df_limon)}")
+    # Coluna de produto — pode ser 'Producto', 'Producto ' etc.
+    col_prod = _find_col(df, "Producto", "Producto ", "producto")
+    if col_prod is None:
+        raise KeyError(f"Coluna 'Producto' nao encontrada. Colunas: {list(df.columns)}")
 
-    if "Fecha" in df_limon.columns:
-        df_limon["Fecha"] = pd.to_datetime(df_limon["Fecha"], errors="coerce")
+    # Normaliza texto: remove acentos para comparação robusta
+    import unicodedata
+    def norm(s):
+        return unicodedata.normalize("NFD", str(s)).encode("ascii", "ignore").decode().upper().strip()
+
+    mask = df[col_prod].astype(str).apply(norm).isin(["LIMON", "LIMA", "LIMON TAHITI", "LIMON ACIDO"])
+    df_limon = df[mask].copy()
+    print(f"    Registros LIMON: {len(df_limon)}")
+    if len(df_limon) > 0:
+        print(f"    Exemplo linha: {df_limon.iloc[0].to_dict()}")
+
+    # Se vazio, tentar busca parcial
+    if len(df_limon) == 0:
+        mask2 = df[col_prod].astype(str).apply(norm).str.contains("LIMON")
+        df_limon = df[mask2].copy()
+        print(f"    Registros LIMON (busca parcial): {len(df_limon)}")
+
+    if len(df_limon) == 0:
+        prods = df[col_prod].astype(str).apply(norm).unique()[:20]
+        print(f"    Produtos encontrados: {prods}")
+        return []
+
+    col_fecha = _find_col(df_limon, "Fecha", "fecha", "Date", "date")
+    col_precio = _find_col(df_limon, "Precio", "precio", "PrecioPromedio", "Precio promedio", "Price")
+    col_mercado = _find_col(df_limon, "Mercado", "mercado", "Market")
+    col_pres = _find_col(df_limon, "Presentacion", "presentacion", "Presentación")
+    col_unidad = _find_col(df_limon, "Unidad", "unidad", "Unidad de comercialización")
+
+    print(f"    Mapeamento: fecha={col_fecha}, precio={col_precio}, mercado={col_mercado}")
+
+    if col_fecha:
+        df_limon[col_fecha] = pd.to_datetime(df_limon[col_fecha], errors="coerce")
 
     records = []
     for _, row in df_limon.iterrows():
-        fecha = row.get("Fecha")
-        if pd.isna(fecha):
+        fecha = row[col_fecha] if col_fecha else None
+        if fecha is None or (hasattr(fecha, 'isnull') and pd.isnull(fecha)):
             continue
 
         fecha_date = fecha.date() if hasattr(fecha, "date") else fecha
         iso = fecha_date.isocalendar()
 
-        precio_raw = row.get("Precio") or row.get("PrecioPromedio") or row.get("precio")
+        precio_raw = row[col_precio] if col_precio else None
         try:
-            precio = float(str(precio_raw).replace(",", "."))
-        except:
+            precio = float(str(precio_raw).replace(",", ".")) if precio_raw not in (None, "", "nan") else None
+        except Exception:
             precio = None
 
         records.append({
             "fecha":        fecha_date.isoformat(),
             "semana":       int(iso.week),
             "ano":          int(iso.year),
-            "producto":     str(row.get("Producto", "LIMÓN")).strip(),
-            "mercado":      str(row.get("Mercado", "") or "").strip() or None,
-            "presentacion": str(row.get("Presentacion", "") or row.get("presentacion", "") or "").strip() or None,
+            "producto":     str(row[col_prod]).strip(),
+            "mercado":      str(row[col_mercado] or "").strip() or None if col_mercado else None,
+            "presentacion": str(row[col_pres] or "").strip() or None if col_pres else None,
             "precio":       precio,
-            "unidad":       str(row.get("Unidad", "") or "").strip() or None,
+            "unidad":       str(row[col_unidad] or "").strip() or None if col_unidad else None,
             "extracted_at": extracted_at,
         })
 
+    print(f"    Com preco valido: {sum(1 for r in records if r['precio'] is not None)}")
     return records
 
 
