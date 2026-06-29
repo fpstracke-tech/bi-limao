@@ -539,26 +539,33 @@ Chart.defaults.plugins.legend.labels.boxWidth = 10;
 Chart.defaults.plugins.legend.labels.usePointStyle = true;
 
 // ═══════════════════════════════════════════════════════════════
-// SUPABASE FETCH
+// SUPABASE FETCH — paginação automática até buscar todos os registros
 // ═══════════════════════════════════════════════════════════════
 async function sbFetch(table, params = {}) {
-  const url = new URL(`${SUPA_URL}/rest/v1/${table}`);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  // Prefer: count=none evita overhead; Range-Unit + Range para paginação automática
-  const headers = {
-    apikey: SUPA_ANON,
-    Authorization: `Bearer ${SUPA_ANON}`,
-    'Range-Unit': 'items',
-    'Range': '0-9999',   // até 10k registros numa chamada
-    'Prefer': 'count=none'
-  };
-  const r = await fetch(url, { headers });
-  if (!r.ok) {
-    const body = await r.text().catch(() => '');
-    console.error(`[sbFetch] ${table} → HTTP ${r.status}`, body);
-    throw new Error(`${table}: HTTP ${r.status} — ${body.slice(0,120)}`);
+  const PAGE = 1000;
+  let all = [], offset = 0;
+  while (true) {
+    const url = new URL(`${SUPA_URL}/rest/v1/${table}`);
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+    const headers = {
+      apikey: SUPA_ANON,
+      Authorization: `Bearer ${SUPA_ANON}`,
+      'Range-Unit': 'items',
+      'Range': `${offset}-${offset + PAGE - 1}`,
+      'Prefer': 'count=none'
+    };
+    const r = await fetch(url, { headers });
+    if (!r.ok) {
+      const body = await r.text().catch(() => '');
+      console.error(`[sbFetch] ${table} → HTTP ${r.status}`, body);
+      throw new Error(`${table}: HTTP ${r.status} — ${body.slice(0,120)}`);
+    }
+    const page = await r.json();
+    all = all.concat(page);
+    if (page.length < PAGE) break;   // última página
+    offset += PAGE;
   }
-  return r.json();
+  return all;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -762,6 +769,11 @@ async function loadChile() {
   const avgPrev  = prevSem.reduce((s,d) => s + d.precio, 0) / (prevSem.length || 1);
   const trend    = avgPrev ? ((avgPrice - avgPrev) / avgPrev) * 100 : null;
 
+  // Mercado com mais registros (para selecionar como padrão)
+  const contagem = {};
+  data.forEach(d => { if (d.mercado) contagem[d.mercado] = (contagem[d.mercado]||0) + 1; });
+  const topMercado = Object.entries(contagem).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
+
   renderKpis('chile-kpis', [
     { label: 'Preço médio', value: `${Math.round(avgPrice).toLocaleString('pt-BR')}`, unit: 'CLP/kg', trend },
     { label: 'Mercados', value: mercados.length, unit: 'monitorados' },
@@ -769,15 +781,16 @@ async function loadChile() {
     { label: 'Semana atual', value: lastSem, unit: `/${curAno}` },
   ]);
 
-  // ── Histórico comparativo por ano ──
+  // ── Histórico comparativo por ano (seleciona top mercado por padrão) ──
   const selMerc = document.getElementById('chile-mercado-select');
   selMerc.innerHTML = `<option value="">Todos os mercados</option>` +
-    mercados.map(m => `<option value="${m}">${m}</option>`).join('');
+    mercados.map(m => `<option value="${m}" ${m===topMercado?'selected':''}>${m}</option>`).join('');
   selMerc.addEventListener('change', () => drawChileHistorico(data, anos, selMerc.value));
-  drawChileHistorico(data, anos, '');
+  drawChileHistorico(data, anos, topMercado);
 
-  // ── Últimas 4 semanas ──
-  drawChileUlt4sem(data, mercados, curAno);
+  // ── Últimas 4 semanas (top 5 mercados) ──
+  const top5 = Object.entries(contagem).sort((a,b) => b[1]-a[1]).slice(0,5).map(e=>e[0]);
+  drawChileUlt4sem(data, top5, curAno);
 
   // ── Evolução semanal (filtro por ano) ──
   let activeAno = curAno;
@@ -788,9 +801,9 @@ async function loadChile() {
     filterEl.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
     c.classList.add('active');
     activeAno = +c.dataset.ano;
-    drawChileLine(data, activeAno);
+    drawChileLine(data, top5, activeAno);
   }));
-  drawChileLine(data, activeAno);
+  drawChileLine(data, top5, activeAno);
 }
 
 function drawChileHistorico(data, anos, mercado) {
@@ -831,11 +844,10 @@ function drawChileUlt4sem(data, mercados, curAno) {
 }
 
 // Evolução semanal Chile por mercado (um ano)
-function drawChileLine(data, ano) {
+function drawChileLine(data, mercados, ano) {
   const filtered = data.filter(d => d.ano === ano);
   const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
-  const mercados = [...new Set(filtered.map(d => d.mercado).filter(Boolean))].sort();
-  const datasets = mercados.slice(0,8).map((merc, i) =>
+  const datasets = mercados.map((merc, i) =>
     lineDs(merc, semanas.map(s => {
       const rows = filtered.filter(d => d.semana === s && d.mercado === merc);
       return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(0) : null;
