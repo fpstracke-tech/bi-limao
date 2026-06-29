@@ -122,52 +122,67 @@ def transform(df: pd.DataFrame, extracted_at: str) -> list[dict]:
         raise KeyError(f"Coluna 'Producto' nao encontrada. Colunas: {list(df.columns)}")
 
     # Normaliza texto: remove acentos para comparação robusta
-    import unicodedata
+    import unicodedata, re as _re
     def norm(s):
         return unicodedata.normalize("NFD", str(s)).encode("ascii", "ignore").decode().upper().strip()
 
     mask = df[col_prod].astype(str).apply(norm).isin(["LIMON", "LIMA", "LIMON TAHITI", "LIMON ACIDO"])
     df_limon = df[mask].copy()
-    print(f"    Registros LIMON: {len(df_limon)}")
-    if len(df_limon) > 0:
-        print(f"    Exemplo linha: {df_limon.iloc[0].to_dict()}")
-
-    # Se vazio, tentar busca parcial
     if len(df_limon) == 0:
         mask2 = df[col_prod].astype(str).apply(norm).str.contains("LIMON")
         df_limon = df[mask2].copy()
-        print(f"    Registros LIMON (busca parcial): {len(df_limon)}")
-
+    print(f"    Registros LIMON: {len(df_limon)}")
     if len(df_limon) == 0:
-        prods = df[col_prod].astype(str).apply(norm).unique()[:20]
-        print(f"    Produtos encontrados: {prods}")
+        print(f"    Produtos encontrados: {df[col_prod].astype(str).apply(norm).unique()[:20]}")
         return []
 
-    col_fecha = _find_col(df_limon, "Fecha", "fecha", "Date", "date")
-    col_precio = _find_col(df_limon, "Precio", "precio", "PrecioPromedio", "Precio promedio", "Price")
-    col_mercado = _find_col(df_limon, "Mercado", "mercado", "Market")
-    col_pres = _find_col(df_limon, "Presentacion", "presentacion", "Presentación")
-    col_unidad = _find_col(df_limon, "Unidad", "unidad", "Unidad de comercialización")
+    col_fecha   = _find_col(df_limon, "Fecha", "fecha")
+    col_precio  = _find_col(df_limon, "Precio promedio", "Precio", "PrecioPromedio", "precio")
+    col_mercado = _find_col(df_limon, "Mercado", "mercado")
+    col_pres    = _find_col(df_limon, "Calidad", "Presentacion", "presentacion")
+    col_unidad  = _find_col(df_limon, "Unidad de comercializacion", "Unidad de comercialización", "Unidad", "unidad")
 
-    print(f"    Mapeamento: fecha={col_fecha}, precio={col_precio}, mercado={col_mercado}")
+    print(f"    Mapeamento: fecha={col_fecha}, precio={col_precio}, mercado={col_mercado}, unidad={col_unidad}")
 
     if col_fecha:
+        df_limon = df_limon.copy()
         df_limon[col_fecha] = pd.to_datetime(df_limon[col_fecha], errors="coerce")
+
+    def _parse_precio_clp_kg(precio_raw, unidad_str):
+        """Converte preço da unidade para CLP/kg."""
+        try:
+            total = float(str(precio_raw).replace(",", ".").replace(" ", ""))
+        except Exception:
+            return None
+        if not unidad_str:
+            return round(total, 2)
+        s = str(unidad_str).lower()
+        # Extrai kg da string: '$/bandeja 15 kilos', '$/malla 18 kilos', etc.
+        m = _re.search(r'(\d+(?:[.,]\d+)?)\s*kilos?', s)
+        if m:
+            kg = float(m.group(1).replace(",", "."))
+            return round(total / kg, 2) if kg > 0 else None
+        # $/kilo ou $/kg = já é por kg
+        if "$/kilo" in s or "$/kg" in s:
+            return round(total, 2)
+        # bins (450/400 kilos)
+        m2 = _re.search(r'bins?\s*[(\[]?\s*(\d+)\s*kilos?', s)
+        if m2:
+            kg = float(m2.group(1))
+            return round(total / kg, 2) if kg > 0 else None
+        return round(total, 2)  # fallback sem normalização
 
     records = []
     for _, row in df_limon.iterrows():
         fecha = row[col_fecha] if col_fecha else None
-        if fecha is None or (hasattr(fecha, 'isnull') and pd.isnull(fecha)):
+        if fecha is None or pd.isnull(fecha):
             continue
-
         fecha_date = fecha.date() if hasattr(fecha, "date") else fecha
         iso = fecha_date.isocalendar()
 
         precio_raw = row[col_precio] if col_precio else None
-        try:
-            precio = float(str(precio_raw).replace(",", ".")) if precio_raw not in (None, "", "nan") else None
-        except Exception:
-            precio = None
+        unidad_str = str(row[col_unidad]) if col_unidad and pd.notna(row[col_unidad]) else ""
+        precio_kg  = _parse_precio_clp_kg(precio_raw, unidad_str)
 
         records.append({
             "fecha":        fecha_date.isoformat(),
@@ -176,13 +191,33 @@ def transform(df: pd.DataFrame, extracted_at: str) -> list[dict]:
             "producto":     str(row[col_prod]).strip(),
             "mercado":      str(row[col_mercado] or "").strip() or None if col_mercado else None,
             "presentacion": str(row[col_pres] or "").strip() or None if col_pres else None,
-            "precio":       precio,
-            "unidad":       str(row[col_unidad] or "").strip() or None if col_unidad else None,
+            "precio":       precio_kg,
+            "unidad":       "CLP/kg",
             "extracted_at": extracted_at,
         })
 
     print(f"    Com preco valido: {sum(1 for r in records if r['precio'] is not None)}")
-    return records
+
+    # Deduplicar por (fecha, mercado, presentacion) — média de precio_kg
+    from collections import defaultdict
+    grupos = defaultdict(list)
+    for r in records:
+        key = (r["fecha"], r["mercado"] or "", r["presentacion"] or "")
+        if r["precio"] is not None:
+            grupos[key].append(r)
+
+    dedup = []
+    for key, rows in grupos.items():
+        avg = round(sum(r["precio"] for r in rows) / len(rows), 2)
+        r0 = rows[0].copy()
+        r0["precio"] = avg
+        dedup.append(r0)
+
+    print(f"    Apos dedup: {len(dedup)} registros unicos")
+    if dedup:
+        ex = dedup[0]
+        print(f"    Ex normalizado: {ex['fecha']} | {ex['mercado']} | {ex['precio']} CLP/kg")
+    return dedup
 
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────

@@ -131,9 +131,27 @@ def load_arquivo(path: Path, todos: bool) -> list[dict]:
         })
 
     if skipped:
-        print(f"    Skipped: {skipped} (sem data ou preço)")
-    print(f"    OK: {len(records)} registros")
-    return records
+        print(f"    Skipped: {skipped} (sem data ou preco)")
+
+    # Deduplicar por (fecha, mercado, presentacion) — média de precio
+    from collections import defaultdict
+    grupos = defaultdict(list)
+    for r in records:
+        key = (r["fecha"], r["mercado"] or "", r["presentacion"] or "")
+        if r["precio"] is not None:
+            grupos[key].append(r["precio"])
+    dedup = []
+    seen_keys = set()
+    for r in records:
+        key = (r["fecha"], r["mercado"] or "", r["presentacion"] or "")
+        if key not in seen_keys and key in grupos:
+            seen_keys.add(key)
+            r2 = r.copy()
+            r2["precio"] = round(sum(grupos[key]) / len(grupos[key]), 2)
+            dedup.append(r2)
+
+    print(f"    OK: {len(dedup)} registros (dedup de {len(records)})")
+    return dedup
 
 
 def find_file(filename: str, extra_dirs: list[Path]) -> Path | None:
