@@ -31,7 +31,7 @@ jobs:
       - name: Instalar dependências Python
         run: |
           pip install --upgrade pip
-          pip install requests pandas openpyxl playwright
+          pip install -r requirements.txt
 
       - name: Instalar browsers Playwright
         run: playwright install --with-deps chromium
