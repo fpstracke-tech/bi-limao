@@ -289,6 +289,12 @@
       Containers
     </div>
 
+    <div class="nav-section" style="margin-top:.75rem">Sistema</div>
+    <div class="nav-item" data-page="status">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a10 10 0 1 1 0 20A10 10 0 0 1 12 2z"/><path d="M12 6v6l4 2"/></svg>
+      Status
+    </div>
+
     <div class="sidebar-footer">
       <span class="status-dot"></span>
       <span class="status-label" id="last-update">Carregando…</span>
@@ -469,6 +475,28 @@
             </div>
           </div>
           <div class="chart-wrap"><canvas id="chartGlobalAll"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── STATUS ───────────────────────────────────────────────── -->
+    <section class="page" id="page-status">
+      <div class="page-header">
+        <div class="page-eyebrow">🔄 GitHub Actions + Supabase</div>
+        <div class="page-title">Status das Fontes</div>
+        <div class="page-sub">Última atualização de cada pipeline de dados</div>
+      </div>
+      <div class="kpi-grid" id="status-grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
+        <div class="loading"><div class="spinner"></div>Verificando…</div>
+      </div>
+      <div class="card-shell chart-card" style="margin-top:1.5rem">
+        <div class="card-inner">
+          <div class="chart-header"><span class="chart-title">Legenda de status</span></div>
+          <div style="display:flex;gap:1.5rem;flex-wrap:wrap;padding:.5rem 0;font-size:.78rem;color:var(--text-2)">
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#4CAE4F;margin-right:.4rem;vertical-align:middle"></span>Atualizado — dentro do prazo esperado</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FFA726;margin-right:.4rem;vertical-align:middle"></span>Atenção — ligeiramente defasado</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#EF5350;margin-right:.4rem;vertical-align:middle"></span>Crítico — verificar pipeline</span>
+          </div>
         </div>
       </div>
     </section>
@@ -1413,7 +1441,7 @@ function pageError(page, err) {
   const targets = {
     brasil: 'brasil-kpis', chile: 'chile-kpis', europa: 'europa-kpis',
     'clima-local': 'clima-cards', 'clima-global': 'clima-global-cards',
-    share: 'share-kpis', containers: 'cont-kpis'
+    share: 'share-kpis', containers: 'cont-kpis', status: 'status-grid'
   };
   const id = targets[page];
   if (id) {
@@ -1435,6 +1463,7 @@ async function loadPage(page) {
     else if (page==='clima-global') await loadClimaGlobal();
     else if (page==='share')        await loadShare();
     else if (page==='containers')   await loadContainers();
+    else if (page==='status')       await loadStatus();
   } catch(e) {
     pageError(page, e);
   }
@@ -1443,14 +1472,61 @@ async function loadPage(page) {
 // ═══════════════════════════════════════════════════════════════
 // STATUS — última atualização
 // ═══════════════════════════════════════════════════════════════
+
+// Limiar de alerta por tabela (horas para amarelo, horas para vermelho)
+const STATUS_THRESHOLDS = {
+  'brasil_precos':         { label: 'Preços Brasil',   emoji: '🇧🇷', amarelo: 200,  vermelho: 360  }, // semanal
+  'chile_precos':          { label: 'Preços Chile',    emoji: '🇨🇱', amarelo: 200,  vermelho: 360  },
+  'europa_precos':         { label: 'Preços Europa',   emoji: '🇪🇺', amarelo: 200,  vermelho: 360  },
+  'containers':            { label: 'Containers',      emoji: '🚢', amarelo: 200,  vermelho: 360  },
+  'comexstat_exportacoes': { label: 'Share Brasil',    emoji: '📦', amarelo: 600,  vermelho: 900  }, // mensal
+  'clima_brasil_atual':    { label: 'Clima Local',     emoji: '🌤', amarelo: 10,   vermelho: 24   }, // semanal
+  'clima_brasil_forecast': { label: 'Clima Forecast',  emoji: '📅', amarelo: 10,   vermelho: 24   },
+  'clima_forecast':        { label: 'Clima Global',    emoji: '🌍', amarelo: 10,   vermelho: 24   },
+};
+
 async function loadStatus() {
   try {
-    const rows = await sbFetch('v_ultima_atualizacao', { order:'ultima_atualizacao.desc', limit:1 });
+    const rows = await sbFetch('v_ultima_atualizacao', { order:'ultima_atualizacao.desc' });
+
+    // Atualiza rodapé com a data mais recente global
     if (rows.length) {
       const d = new Date(rows[0].ultima_atualizacao);
       document.getElementById('last-update').textContent = `Atualizado ${d.toLocaleDateString('pt-BR')}`;
     }
-  } catch(e) {}
+
+    // Renderiza página de status (se aberta)
+    const grid = document.getElementById('status-grid');
+    if (!grid) return;
+
+    const now = Date.now();
+    grid.innerHTML = rows.map(r => {
+      const cfg   = STATUS_THRESHOLDS[r.tabela] || { label: r.tabela, emoji: '📊', amarelo: 48, vermelho: 168 };
+      const d     = new Date(r.ultima_atualizacao);
+      const horas = (now - d.getTime()) / 36e5;
+      const cor   = horas > cfg.vermelho ? '#EF5350' : horas > cfg.amarelo ? '#FFA726' : '#4CAE4F';
+      const tempo = horas < 1   ? 'há menos de 1h'
+                  : horas < 24  ? `há ${Math.floor(horas)}h`
+                  : horas < 168 ? `há ${Math.floor(horas/24)}d`
+                  : `há ${Math.floor(horas/168)}sem`;
+      const regs  = r.total_registros ? Number(r.total_registros).toLocaleString('pt-BR') : '—';
+
+      return `
+        <div class="card-shell" style="border-left: 3px solid ${cor}">
+          <div class="card-inner">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem">
+              <span style="font-size:.75rem;color:var(--text-2)">${cfg.emoji} ${cfg.label}</span>
+              <span style="width:10px;height:10px;border-radius:50%;background:${cor};display:inline-block;box-shadow:0 0 6px ${cor}88"></span>
+            </div>
+            <div style="font-size:1.1rem;font-weight:700;color:var(--text);line-height:1.2">${tempo}</div>
+            <div style="font-size:.7rem;color:var(--text-3);margin-top:.3rem">${d.toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+            <div style="font-size:.68rem;color:var(--text-3);margin-top:.4rem">${regs} registros</div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    console.error('[loadStatus]', e);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
