@@ -106,7 +106,13 @@ def fetch_precos_chile():
     for s in semanas:
         r = next((x for x in mercado_rows if int(x["semana"]) == s), None)
         if r:
-            dados.append({"semana": s, "preco": round(float(r["precio"] or 0) * clp_usd, 2)})
+            precio_raw = r.get("precio") or r.get("preco") or 0
+            try:
+                precio_clp = float(str(precio_raw).replace(",", "."))
+            except (ValueError, TypeError):
+                precio_clp = 0
+            print(f"  Chile S{s}: precio_raw={precio_raw!r} clp={precio_clp} usd={round(precio_clp * clp_usd, 2)}")
+            dados.append({"semana": s, "preco": round(precio_clp * clp_usd, 2)})
     return sorted(dados, key=lambda x: x["semana"]), cur_ano, top_mercado
 
 def fetch_precos_europa():
@@ -217,22 +223,26 @@ def build_pdf(brasil, chile_data, europa_data, share, containers, clima, ano_bra
         ]
 
     def kpi_table(kpis):
-        # kpis = list of (label, value, unit)
+        # kpis = list of (label, value, unit) — cada KPI vira uma linha: valor grande + label abaixo
         n = len(kpis)
         col_w = W / n
-        data = [[Paragraph(f"<b>{v}</b> <font size=8>{u}</font>", ParagraphStyle("kv", fontSize=16, textColor=verde_rl, fontName="Helvetica-Bold"))
-                 for _, v, u in kpis],
-                [Paragraph(l, ParagraphStyle("kl", fontSize=8, textColor=cinza_dark, alignment=TA_CENTER))
-                 for l, _, _ in kpis]]
-        t = Table(data, colWidths=[col_w]*n)
+        kv_style = ParagraphStyle("kv", fontSize=20, textColor=verde_rl, fontName="Helvetica-Bold", alignment=1)
+        kl_style = ParagraphStyle("kl", fontSize=8, textColor=cinza_dark, alignment=1, spaceBefore=2)
+        # Uma linha por KPI com valor e label empilhados numa célula única
+        row = []
+        for label, val, unit in kpis:
+            cell = [Paragraph(f"<b>{val}</b>", kv_style),
+                    Paragraph(f"{unit}  ·  {label}", kl_style)]
+            row.append(cell)
+        t = Table([row], colWidths=[col_w]*n)
         t.setStyle(TableStyle([
-            ("ALIGN",      (0,0), (-1,-1), "CENTER"),
-            ("VALIGN",     (0,0), (-1,-1), "MIDDLE"),
-            ("ROWBACKGROUNDS", (0,0), (-1,-1), [cinza_rl, colors.white]),
-            ("BOX",        (0,0), (-1,-1), 0.5, colors.lightgrey),
-            ("INNERGRID",  (0,0), (-1,-1), 0.3, colors.lightgrey),
-            ("TOPPADDING", (0,0), (-1,-1), 4),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+            ("ALIGN",         (0,0), (-1,-1), "CENTER"),
+            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+            ("BACKGROUND",    (0,0), (-1,-1), cinza_rl),
+            ("BOX",           (0,0), (-1,-1), 0.5, colors.lightgrey),
+            ("INNERGRID",     (0,0), (-1,-1), 0.3, colors.lightgrey),
+            ("TOPPADDING",    (0,0), (-1,-1), 8),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 8),
         ]))
         return t
 
@@ -241,7 +251,10 @@ def build_pdf(brasil, chile_data, europa_data, share, containers, clima, ano_bra
             return Paragraph("Sem dados disponíveis.", normal)
         header = ["Semana"] + [f"S{d['semana']}" for d in dados]
         vals   = [moeda] + [f"{d['preco']:.2f}" for d in dados]
-        t = Table([header, vals], colWidths=[W/5] + [W/5]*(len(dados)))
+        n_cols = len(header)
+        label_w = W * 0.25
+        data_w  = (W - label_w) / (n_cols - 1)
+        t = Table([header, vals], colWidths=[label_w] + [data_w] * (n_cols - 1))
         t.setStyle(TableStyle([
             ("BACKGROUND",    (0,0), (-1,0), verde_rl),
             ("TEXTCOLOR",     (0,0), (-1,0), colors.white),
@@ -260,8 +273,11 @@ def build_pdf(brasil, chile_data, europa_data, share, containers, clima, ano_bra
 
     # ── Capa ────────────────────────────────────────────────────────────────
     story.append(Spacer(1, 8*mm))
-    story.append(Paragraph("🍋 BI Limão — TFruits", title_style))
-    story.append(Paragraph(f"Relatório Semanal · {datetime.now().strftime('%d de %B de %Y')}", sub_style))
+    MESES_PT = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']
+    hoje = datetime.now()
+    data_pt = f"{hoje.day} de {MESES_PT[hoje.month-1]} de {hoje.year}"
+    story.append(Paragraph("BI Limão — TFruits", title_style))
+    story.append(Paragraph(f"Relatório Semanal · {data_pt}", sub_style))
     story.append(HRFlowable(width=W, thickness=2, color=verde_rl, spaceAfter=8))
 
     # ── Preços Brasil ────────────────────────────────────────────────────────
