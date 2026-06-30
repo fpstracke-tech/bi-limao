@@ -48,7 +48,7 @@ jobs:
       - name: Resumo
         if: always()
         run: |
-          echo "### Resultado ETL Clima — $(date -u '+%Y-%m-%d %H:%M UTC')"
+          echo "### Resultado ETL Clima — $(date -u '+%Y-%m-%d %H%M UTC')"
           echo "Clima Local:  ${{ steps.clima_local.outcome }}"
           echo "Clima Global: ${{ steps.clima_global.outcome }}"
 

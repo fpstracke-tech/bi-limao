@@ -36,7 +36,7 @@ jobs:
 
       - name: Resumo
         if: always()
-        run: echo "Comexstat: ${{ steps.comexstat.outcome }} — $(date -u '+%Y-%m-%d %H:%M UTC')"
+        run: echo "Comexstat ${{ steps.comexstat.outcome }} — $(date -u '+%Y-%m-%d %H%M UTC')"
 
       - name: Abrir issue em caso de falha
         if: failure()
