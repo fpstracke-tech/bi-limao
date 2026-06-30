@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 # ── Configuração ────────────────────────────────────────────────────────────
 RESEND_API_KEY = os.environ["RESEND_API_KEY"]
 
-DASHBOARD_URL = "https://bi-limao.vercel.app"
+DASHBOARD_URL = "https://bilimao.tfruits.com.br"
 FROM_EMAIL    = "reports@tradeconnex.com"
 TO_EMAILS     = ["felipe.passos@tradeconnex.com"]
 
