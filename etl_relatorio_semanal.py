@@ -17,7 +17,7 @@ SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 RESEND_API_KEY = os.environ["RESEND_API_KEY"]
 
 FROM_EMAIL   = "reports@tradeconnex.com"
-TO_EMAILS    = ["fpstracke@gmail.com"]
+TO_EMAILS    = ["felipe.passos@tradeconnex.com"]
 SUBJECT      = f"📊 Relatório Semanal BI Limão — {datetime.now().strftime('%d/%m/%Y')}"
 
 VERDE   = (0.298, 0.682, 0.310)   # #4CAE4F
