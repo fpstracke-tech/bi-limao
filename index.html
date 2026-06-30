@@ -247,7 +247,7 @@
 
   <!-- ══ SIDEBAR ════════════════════════════════════════════════ -->
   <aside class="sidebar">
-        <div class="sidebar-logo">
+    <div class="sidebar-logo">
       <div class="logo-dot">T</div>
       <div>
         <div class="logo-text"><span style="color:var(--text)">T</span><span style="color:var(--orange)">Fruits</span></div>
@@ -1062,4 +1062,579 @@ async function loadEuropa() {
   const anos    = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
   const curAno  = Math.max(...anos);
   const curData = data.filter(d => d.ano === curAno);
-  const sems    = [...new Set(curData.map(d => d.seman
+  const sems    = [...new Set(curData.map(d => d.semana))].sort((a,b) => a-b);
+  const lastSem = sems.at(-1);
+  const lastData = curData.filter(d => d.semana === lastSem);
+  const avgLast  = lastData.reduce((s,d) => s + d.preco_4_5kg, 0) / (lastData.length || 1);
+  const prevSem  = sems.at(-2);
+  const avgPrev  = prevSem ? (() => { const p = curData.filter(d=>d.semana===prevSem); return p.reduce((s,d)=>s+d.preco_4_5kg,0)/(p.length||1); })() : 0;
+  const trend    = avgPrev ? ((avgLast - avgPrev) / avgPrev) * 100 : null;
+
+  renderKpis('europa-kpis', [
+    { label: `Sem ${lastSem}/${curAno}`, value: `€ ${avgLast.toFixed(2)}`, unit: 'cx 4,5 kg', trend },
+    { label: 'Anos histórico', value: anos.length, unit: 'anos' },
+    { label: 'Registros', value: data.length, unit: 'semanas' },
+    { label: 'Fonte', value: 'FranceAgriMer', unit: 'marítimo' },
+  ]);
+
+  // ── Histórico por ano (uma linha por ano)
+  const todasSemanas = [...new Set(data.map(d => d.semana))].sort((a,b) => a-b);
+  const datasets = anos.map((ano, i) =>
+    lineDs(String(ano), todasSemanas.map(s => {
+      const rows = data.filter(d => d.ano === ano && d.semana === s);
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null;
+    }), PALETTE[i % PALETTE.length])
+  );
+
+  // Tendência ano mais recente
+  const curSeries = todasSemanas.map((s, i) => {
+    const rows = data.filter(d => d.ano === curAno && d.semana === s);
+    return { x: i, y: rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null };
+  });
+  const pred = predictLinear(curSeries, 4, 12);
+  const predLabels = Array.from({length:4}, (_,i) => `→S${todasSemanas.at(-1)+i+1}`);
+  datasets.push(trendDs(`Tendência ${curAno}`, todasSemanas.length, pred));
+
+  mkChart('chartEuropaHistorico', {
+    type: 'line',
+    data: { labels: [...todasSemanas.map(s=>`S${s}`), ...predLabels], datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}, tooltip:{...tooltipEUR, callbacks:{...tooltipEUR.callbacks,
+        footer: items => items.some(i=>i.dataset.label?.startsWith('Tendência')) ? '⚠ Estimativa — uso indicativo' : ''}}},
+      scales:scalesEUR, spanGaps:true }
+  });
+
+  // ── Últimas 4 semanas
+  const ult4sems = sems.slice(-4);
+  mkChart('chartEuropaUlt4sem', {
+    type: 'bar',
+    data: {
+      labels: ult4sems.map(s=>`Sem ${s}`),
+      datasets: [barDs('€/cx 4,5kg', ult4sems.map(s => {
+        const rows = curData.filter(d => d.semana === s);
+        return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : 0;
+      }), PALETTE[2])]
+    },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip: tooltipEUR},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
+        ticks:{callback: v => `€${v.toFixed(2)}`}} } }
+  });
+
+  // ── Evolução semanal com filtro por ano
+  let activeAnoEu = curAno;
+  const filterElEu = document.getElementById('europa-filter');
+  filterElEu.innerHTML = [...anos].reverse().map(a =>
+    `<div class="filter-chip ${a===curAno?'active':''}" data-ano="${a}">${a}</div>`).join('');
+  filterElEu.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
+    filterElEu.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
+    c.classList.add('active');
+    activeAnoEu = +c.dataset.ano;
+    drawEuropaLine(data, activeAnoEu);
+  }));
+  drawEuropaLine(data, curAno);
+}
+
+function drawEuropaLine(data, ano) {
+  const filtered = data.filter(d => d.ano === ano);
+  const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
+  const vals     = semanas.map(s => {
+    const rows = filtered.filter(d => d.semana === s);
+    return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null;
+  });
+  mkChart('chartEuropaLine', {
+    type: 'line',
+    data: { labels: semanas.map(s=>`S${s}`), datasets: [lineDs('€/cx 4,5kg', vals, PALETTE[2], true)] },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}, tooltip: tooltipEUR}, scales:scalesEUR }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── CLIMA LOCAL ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadClimaLocal() {
+  const [atual, forecast] = await Promise.all([
+    sbFetch('clima_brasil_atual', { select:'cidade,data_ref,temp_c,humidade_pct,chuva_mm,descricao,vento_kmh', order:'extracted_at.desc', limit:50 }),
+    sbFetch('clima_brasil_forecast', { select:'cidade,data_previsao,extracted_at,temp_max,temp_min,chuva_mm,prob_chuva_pct,descricao', order:'extracted_at.desc,data_previsao.asc' })
+  ]);
+
+  // Pega snapshot mais recente por cidade
+  const seen = {}; const latest = [];
+  for (const r of atual) { if (!seen[r.cidade]) { seen[r.cidade]=true; latest.push(r); } }
+
+  const container = document.getElementById('clima-cards');
+  container.innerHTML = '';
+  latest.forEach((c, i) => {
+    const div = document.createElement('div');
+    div.className = 'card-shell cidade-card';
+    div.style.animationDelay = `${i * .07}s`;
+    div.innerHTML = `<div class="card-inner">
+      <div class="cidade-nome">${c.cidade}</div>
+      <div class="cidade-temp">${c.temp_c}°</div>
+      <div class="cidade-desc">${c.descricao || ''}</div>
+      <div class="cidade-extra">
+        <span>💧 ${c.humidade_pct || 0}%</span>
+        <span>🌧 ${c.chuva_mm || 0}mm</span>
+        <span>💨 ${c.vento_kmh || '—'}</span>
+      </div>
+    </div>`;
+    container.appendChild(div);
+  });
+
+  // Select de cidade pro forecast individual
+  const cidades = [...new Set(forecast.map(f=>f.cidade))].sort();
+  const sel = document.getElementById('clima-cidade-select');
+  sel.innerHTML = cidades.map(c=>`<option value="${c}">${c}</option>`).join('');
+  sel.addEventListener('change', () => drawClimaFc(forecast, sel.value));
+  if (cidades.length) drawClimaFc(forecast, cidades[0]);
+
+  // Gráfico comparativo todas as cidades
+  let metricaAll = 'temp_max';
+  drawClimaAll(forecast, cidades, metricaAll);
+  document.getElementById('clima-all-filter').querySelectorAll('.filter-chip').forEach(c => {
+    c.addEventListener('click', () => {
+      document.getElementById('clima-all-filter').querySelectorAll('.filter-chip').forEach(x=>x.classList.remove('active'));
+      c.classList.add('active');
+      metricaAll = c.dataset.metric;
+      drawClimaAll(forecast, cidades, metricaAll);
+    });
+  });
+}
+
+function drawClimaFc(forecast, cidade) {
+  // Pega apenas o extracted_at mais recente para esta cidade
+  const fcCidade = forecast.filter(f=>f.cidade===cidade);
+  const maxExt   = fcCidade.reduce((m,f)=>f.extracted_at>m?f.extracted_at:m,'');
+  const fcLatest = fcCidade.filter(f=>f.extracted_at===maxExt);
+  const fc = fcLatest.sort((a,b)=>a.data_previsao.localeCompare(b.data_previsao)).slice(0,7);
+  const labels = fc.map(f=>f.data_previsao.slice(5)); // MM-DD
+  mkChart('chartClimaFc', {
+    type: 'bar',
+    data: { labels, datasets: [
+      barDs('Temp Máx °C', fc.map(f=>f.temp_max), PALETTE[0]),
+      lineDs('Chuva mm', fc.map(f=>+f.chuva_mm), PALETTE[6]),
+    ]},
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+  });
+}
+
+function drawClimaAll(forecast, cidades, metrica) {
+  // Para cada cidade, pega o extracted_at mais recente e os 7 dias de previsão
+  const byCity = {};
+  cidades.forEach(cidade => {
+    const fc = forecast.filter(f=>f.cidade===cidade);
+    const maxExt = fc.reduce((m,f)=>f.extracted_at>m?f.extracted_at:m,'');
+    byCity[cidade] = fc.filter(f=>f.extracted_at===maxExt)
+      .sort((a,b)=>a.data_previsao.localeCompare(b.data_previsao)).slice(0,7);
+  });
+
+  // Labels = datas da primeira cidade disponível
+  const refCidade = cidades.find(c=>byCity[c].length>0);
+  if (!refCidade) return;
+  const labels = byCity[refCidade].map(f=>f.data_previsao.slice(5));
+
+  const datasets = cidades.map((cidade, i) =>
+    lineDs(cidade.split('/')[0], byCity[cidade].map(f=>+(f[metrica]||0)), PALETTE[i%PALETTE.length])
+  );
+
+  const label = metrica==='temp_max' ? 'Temp Máx °C' : 'Chuva mm';
+  mkChart('chartClimaAll', {
+    type: 'line',
+    data: { labels, datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{position:'bottom'},
+        tooltip:{ callbacks:{ label: ctx=>`${ctx.dataset.label}: ${ctx.raw}${metrica==='temp_max'?'°C':'mm'}` }}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── CLIMA GLOBAL ─────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadClimaGlobal() {
+  const data = await sbFetch('clima_forecast', {
+    select:'cidade,pais,data_hora,temp_c,temp_min,temp_max,chuva_mm,descricao,humidade_pct',
+    order:'data_hora.asc', limit:500
+  });
+
+  if (!data.length) return;
+
+  // Condição atual por cidade = primeiro registro (mais próximo)
+  const seenCity = {}; const latest = [];
+  for (const r of data) {
+    const key = `${r.cidade}|${r.pais}`;
+    if (!seenCity[key]) { seenCity[key] = true; latest.push(r); }
+  }
+
+  // Cards de cidade (igual ao Local)
+  const container = document.getElementById('clima-global-cards');
+  container.innerHTML = '';
+  latest.forEach((c, i) => {
+    const div = document.createElement('div');
+    div.className = 'card-shell cidade-card';
+    div.style.animationDelay = `${i * .06}s`;
+    div.innerHTML = `<div class="card-inner">
+      <div class="cidade-nome">${c.cidade} <span style="font-size:.6rem;color:var(--text-3)">${c.pais}</span></div>
+      <div class="cidade-temp">${c.temp_c}°</div>
+      <div class="cidade-desc">${c.descricao || ''}</div>
+      <div class="cidade-extra">
+        <span>💧 ${c.humidade_pct || 0}%</span>
+        <span>🌧 ${(+c.chuva_mm || 0).toFixed(1)}mm</span>
+        <span>↑${c.temp_max}° ↓${c.temp_min}°</span>
+      </div>
+    </div>`;
+    container.appendChild(div);
+  });
+
+  // Select para forecast
+  const cidades = [...new Set(data.map(d=>`${d.cidade}|${d.pais}`))];
+  const sel = document.getElementById('global-cidade-select');
+  sel.innerHTML = cidades.map(c => {
+    const [cidade, pais] = c.split('|');
+    return `<option value="${c}">${cidade} (${pais})</option>`;
+  }).join('');
+
+  function drawGlobal(key) {
+    const [cidade, pais] = key.split('|');
+    const fc = data.filter(d => d.cidade === cidade && d.pais === pais);
+    // Agrupa por dia — temp máx e chuva acumulada
+    const byDay = {};
+    fc.forEach(f => {
+      const d = f.data_hora.slice(0,10);
+      if (!byDay[d]) byDay[d] = { tempMax: -99, tempMin: 99, chuva: 0 };
+      byDay[d].tempMax = Math.max(byDay[d].tempMax, +f.temp_max || +f.temp_c);
+      byDay[d].tempMin = Math.min(byDay[d].tempMin, +f.temp_min || +f.temp_c);
+      byDay[d].chuva  += +f.chuva_mm;
+    });
+    const days   = Object.keys(byDay).sort();
+    const labels = days.map(d => d.slice(5));
+
+    mkChart('chartGlobal', {
+      type: 'bar',
+      data: { labels, datasets: [
+        barDs('Temp Máx °C', days.map(d => byDay[d].tempMax), PALETTE[0]),
+        lineDs('Chuva mm', days.map(d => byDay[d].chuva.toFixed(1)), PALETTE[6]),
+      ]},
+      options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'bottom'}},
+        scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+    });
+  }
+
+  sel.addEventListener('change', () => drawGlobal(sel.value));
+  if (cidades.length) drawGlobal(cidades[0]);
+
+  // Gráfico comparativo todas as cidades globais
+  let metricaGlobalAll = 'tempMax';
+  drawGlobalAll(data, cidades, metricaGlobalAll);
+  document.getElementById('global-all-filter').querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.getElementById('global-all-filter').querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
+      chip.classList.add('active');
+      metricaGlobalAll = chip.dataset.metric;
+      drawGlobalAll(data, cidades, metricaGlobalAll);
+    });
+  });
+}
+
+function drawGlobalAll(data, cidades, metrica) {
+  // Para cada cidade, agrega por dia (mesmo critério do drawGlobal)
+  const byCity = {};
+  cidades.forEach(key => {
+    const [cidade, pais] = key.split('|');
+    const fc = data.filter(d => d.cidade === cidade && d.pais === pais);
+    const byDay = {};
+    fc.forEach(f => {
+      const d = f.data_hora.slice(0, 10);
+      if (!byDay[d]) byDay[d] = { tempMax: -99, chuva: 0 };
+      byDay[d].tempMax = Math.max(byDay[d].tempMax, +f.temp_max || +f.temp_c);
+      byDay[d].chuva  += +f.chuva_mm;
+    });
+    const days = Object.keys(byDay).sort().slice(0, 5);
+    byCity[key] = days.map(d => ({ day: d, tempMax: byDay[d].tempMax, chuva: +byDay[d].chuva.toFixed(1) }));
+  });
+
+  const refKey = cidades.find(k => byCity[k]?.length > 0);
+  if (!refKey) return;
+  const labels = byCity[refKey].map(r => r.day.slice(5));
+
+  const datasets = cidades.map((key, i) => {
+    const label = key.split('|')[0];
+    const vals  = byCity[key].map(r => r[metrica]);
+    return lineDs(label, vals, PALETTE[i % PALETTE.length]);
+  });
+
+  mkChart('chartGlobalAll', {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}${metrica === 'tempMax' ? '°C' : 'mm'}` }}
+      },
+      scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(255,255,255,.04)' } } }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── SHARE BRASIL ─────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadShare() {
+  const data = await sbFetch('comexstat_exportacoes', {
+    select:'ano,mes,pais,kg_liquido,valor_usd',
+    order:'ano.asc,mes.asc', limit:5000
+  });
+
+  const anos   = [...new Set(data.map(d=>d.ano))].sort((a,b)=>b-a);
+  const curAno = anos[0];
+  const totalKg  = data.filter(d=>d.ano===curAno).reduce((s,d)=>s+ +d.kg_liquido,0);
+  const totalUSD = data.filter(d=>d.ano===curAno).reduce((s,d)=>s+ +d.valor_usd,0);
+  const paises   = [...new Set(data.map(d=>d.pais))].length;
+
+  renderKpis('share-kpis', [
+    { label: `Kg exportados ${curAno}`, value: (totalKg/1e6).toFixed(1)+'M', unit: 'kg líquido' },
+    { label: `USD FOB ${curAno}`, value: '$'+(totalUSD/1e6).toFixed(1)+'M', unit: 'valor FOB' },
+    { label: 'Países destino', value: paises, unit: 'histórico' },
+    { label: 'NCM', value: '08055000', unit: 'Limão Tahiti' },
+  ]);
+
+  // Bar — top 10 por kg
+  const byPais = {};
+  data.filter(d=>d.ano===curAno).forEach(d=>{ byPais[d.pais]=(byPais[d.pais]||0)+ +d.kg_liquido; });
+  const top10 = Object.entries(byPais).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  mkChart('chartShareBar', {
+    type:'bar',
+    data:{ labels:top10.map(([p])=>p), datasets:[barDs('kg líquido', top10.map(([,v])=>v), PALETTE[0])] },
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'}},y:{grid:{display:false}}}}
+  });
+
+  // Line + Ano select
+  const selAno  = document.getElementById('share-ano-select');
+  const selAnot = document.getElementById('share-table-ano');
+  selAno.innerHTML = selAnot.innerHTML = anos.map(a=>`<option value="${a}">${a}</option>`).join('');
+  function drawShareLine(ano) {
+    const meses = [1,2,3,4,5,6,7,8,9,10,11,12];
+    const MESES_LABEL = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const vals = meses.map(m=>data.filter(d=>d.ano===+ano&&d.mes===m).reduce((s,d)=>s+ +d.kg_liquido,0));
+    mkChart('chartShareLine', {
+      type:'line',
+      data:{ labels:MESES_LABEL, datasets:[lineDs('kg líquido', vals, PALETTE[2], true)] },
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:scalesLine}
+    });
+  }
+  const selSort = document.getElementById('share-table-sort');
+  function drawShareTable(ano) {
+    const sort  = selSort.value;
+    const meses = [...new Set(data.filter(d=>d.ano===+ano).map(d=>d.mes))].sort((a,b)=>a-b);
+    const ML    = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const paisTotais = [...new Set(data.filter(d=>d.ano===+ano).map(d=>d.pais))]
+      .map(p => ({ p, tot: data.filter(d=>d.ano===+ano&&d.pais===p).reduce((s,d)=>s+ +d.kg_liquido,0) }));
+    if (sort === 'az')   paisTotais.sort((a,b) => a.p.localeCompare(b.p));
+    if (sort === 'desc') paisTotais.sort((a,b) => b.tot - a.tot);
+    if (sort === 'asc')  paisTotais.sort((a,b) => a.tot - b.tot);
+    const t = document.getElementById('share-table');
+    t.querySelector('thead').innerHTML = `<tr><th>País</th>${meses.map(m=>`<th>${ML[m-1]}</th>`).join('')}<th>Total</th></tr>`;
+    t.querySelector('tbody').innerHTML = paisTotais.map(({p, tot})=>{
+      const row = meses.map(m=>{ const r=data.find(d=>d.ano===+ano&&d.mes===m&&d.pais===p); return r?Math.round(+r.kg_liquido/1000)+'t':'—'; });
+      return `<tr><td>${p}</td>${row.map(v=>`<td>${v}</td>`).join('')}<td><span class="badge">${Math.round(tot/1000)}t</span></td></tr>`;
+    }).join('');
+  }
+  selAno.addEventListener('change', ()=>drawShareLine(selAno.value));
+  selAnot.addEventListener('change', ()=>drawShareTable(selAnot.value));
+  selSort.addEventListener('change', ()=>drawShareTable(selAnot.value));
+  drawShareLine(curAno); drawShareTable(curAno);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── CONTAINERS ───────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadContainers() {
+  const data = await sbFetch('v_containers_semanal', { order:'year.asc,week.asc' });
+
+  if (!data.length) { pageError('containers', new Error('Sem dados')); return; }
+
+  data.forEach(d => { d.year = +d.year; d.week = +d.week; d.total_containers = +(d.total_containers||0); });
+
+  const anos     = [...new Set(data.map(d=>d.year))].sort((a,b)=>a-b);
+  const curAno   = Math.max(...anos);
+  const curData  = data.filter(d=>d.year===curAno);
+  const shipped  = data.filter(d=>d.flow==='Shipped');
+  const arrivals = data.filter(d=>d.flow==='Arrivals');
+  const totShip  = curData.filter(d=>d.flow==='Shipped').reduce((s,d)=>s+d.total_containers,0);
+  const totArr   = curData.filter(d=>d.flow==='Arrivals').reduce((s,d)=>s+d.total_containers,0);
+  // Última semana com dados reais de Shipped (ignora semanas futuras vazias)
+  const weeksWithShipped = curData.filter(d=>d.flow==='Shipped'&&d.total_containers>0).map(d=>d.week);
+  const lastWeek = weeksWithShipped.length ? Math.max(...weeksWithShipped) : Math.max(...curData.map(d=>d.week));
+  const lastShip = curData.find(d=>d.week===lastWeek&&d.flow==='Shipped')?.total_containers||0;
+  const prevShip = curData.find(d=>d.week===lastWeek-1&&d.flow==='Shipped')?.total_containers||0;
+  const trend    = prevShip ? ((lastShip-prevShip)/prevShip)*100 : null;
+
+  renderKpis('cont-kpis', [
+    { label: `Shipped S${lastWeek}`, value: lastShip, unit: `containers ${curAno}`, trend },
+    { label: `Total Shipped ${curAno}`, value: Math.round(totShip), unit: "containers 40'" },
+    { label: `Total Arrivals ${curAno}`, value: Math.round(totArr), unit: "containers 40'" },
+    { label: 'Anos histórico', value: anos.length, unit: 'anos' },
+  ]);
+
+  // ── Histórico Shipped — uma linha por ano
+  const allWeeks = [...new Set(data.map(d=>d.week))].sort((a,b)=>a-b);
+  mkChart('chartContShippedHist', {
+    type:'line',
+    data:{ labels: allWeeks.map(w=>`S${w}`),
+      datasets: anos.map((ano,i) => lineDs(String(ano), allWeeks.map(w => {
+        const r = shipped.find(d=>d.year===ano&&d.week===w);
+        return r ? r.total_containers : null;
+      }), PALETTE[i%PALETTE.length])) },
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}},scales:scalesLine,spanGaps:true}
+  });
+
+  // ── Histórico Arrivals — uma linha por ano
+  mkChart('chartContArrivalsHist', {
+    type:'line',
+    data:{ labels: allWeeks.map(w=>`S${w}`),
+      datasets: anos.map((ano,i) => lineDs(String(ano), allWeeks.map(w => {
+        const r = arrivals.find(d=>d.year===ano&&d.week===w);
+        return r ? r.total_containers : null;
+      }), PALETTE[i%PALETTE.length])) },
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}},scales:scalesLine,spanGaps:true}
+  });
+
+  // ── Semanal com select de ano
+  const selAno = document.getElementById('cont-ano-select');
+  selAno.innerHTML = [...anos].reverse().map(a=>`<option value="${a}" ${a===curAno?'selected':''}>${a}</option>`).join('');
+
+  function drawCont(ano) {
+    const semanas   = [...new Set(data.filter(d=>d.year===+ano).map(d=>d.week))].sort((a,b)=>a-b);
+    const shippedD  = semanas.map(w=>{ const r=shipped.find(d=>d.year===+ano&&d.week===w); return r?r.total_containers:null; });
+    const arrivalsD = semanas.map(w=>{ const r=arrivals.find(d=>d.year===+ano&&d.week===w); return r?r.total_containers:null; });
+    mkChart('chartCont', {
+      type:'bar',
+      data:{ labels:semanas.map(s=>`S${s}`), datasets:[barDs('Shipped',shippedD,PALETTE[0]),barDs('Arrivals',arrivalsD,PALETTE[1])] },
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'bottom'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,.04)'}}}}
+    });
+    const t = document.getElementById('cont-table');
+    t.querySelector('thead').innerHTML = `<tr><th>Semana</th><th>Shipped</th><th>Arrivals</th><th>Saldo</th></tr>`;
+    t.querySelector('tbody').innerHTML = [...semanas].map(w=>{
+      const sv=shippedD[semanas.indexOf(w)]||0, av=arrivalsD[semanas.indexOf(w)]||0;
+      const diff=sv-av;
+      return `<tr><td>S${w}/${ano}</td><td>${sv||'—'}</td><td>${av||'—'}</td>
+        <td style="color:${diff>=0?'var(--green)':'#EF5350'}">${diff>0?'+':''}${diff}</td></tr>`;
+    }).join('');
+  }
+  selAno.addEventListener('change', ()=>drawCont(+selAno.value));
+  drawCont(curAno);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PAGE LOADER
+// ═══════════════════════════════════════════════════════════════
+function pageError(page, err) {
+  // Mostra erro visível na primeira área carregável da página
+  const targets = {
+    brasil: 'brasil-kpis', chile: 'chile-kpis', europa: 'europa-kpis',
+    'clima-local': 'clima-cards', 'clima-global': 'clima-global-cards',
+    share: 'share-kpis', containers: 'cont-kpis', status: 'status-grid'
+  };
+  const id = targets[page];
+  if (id) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = `<div class="loading" style="color:#f88;flex-direction:column;gap:.5rem">
+      <span>⚠ Erro ao carregar dados</span>
+      <code style="font-size:.65rem;color:#aaa;word-break:break-all">${err.message}</code>
+    </div>`;
+  }
+  console.error(`[loadPage:${page}]`, err);
+}
+
+async function loadPage(page) {
+  try {
+    if (page==='brasil')            await loadBrasil();
+    else if (page==='chile')        await loadChile();
+    else if (page==='europa')       await loadEuropa();
+    else if (page==='clima-local')  await loadClimaLocal();
+    else if (page==='clima-global') await loadClimaGlobal();
+    else if (page==='share')        await loadShare();
+    else if (page==='containers')   await loadContainers();
+    else if (page==='status')       await loadStatus();
+  } catch(e) {
+    pageError(page, e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STATUS — última atualização
+// ═══════════════════════════════════════════════════════════════
+
+// Limiar de alerta por tabela (horas para amarelo, horas para vermelho)
+const STATUS_THRESHOLDS = {
+  'brasil_precos':         { label: 'Preços Brasil',   emoji: '🇧🇷', amarelo: 200,  vermelho: 360  }, // semanal
+  'chile_precos':          { label: 'Preços Chile',    emoji: '🇨🇱', amarelo: 200,  vermelho: 360  },
+  'europa_precos':         { label: 'Preços Europa',   emoji: '🇪🇺', amarelo: 200,  vermelho: 360  },
+  'containers':            { label: 'Containers',      emoji: '🚢', amarelo: 200,  vermelho: 360  },
+  'comexstat_exportacoes': { label: 'Share Brasil',    emoji: '📦', amarelo: 600,  vermelho: 900  }, // mensal
+  'clima_brasil_atual':    { label: 'Clima Local',     emoji: '🌤', amarelo: 10,   vermelho: 24   }, // semanal
+  'clima_brasil_forecast': { label: 'Clima Forecast',  emoji: '📅', amarelo: 10,   vermelho: 24   },
+  'clima_forecast':        { label: 'Clima Global',    emoji: '🌍', amarelo: 10,   vermelho: 24   },
+};
+
+async function loadStatus() {
+  try {
+    const rows = await sbFetch('v_ultima_atualizacao', { order:'ultima_atualizacao.desc' });
+
+    // Atualiza rodapé com a data mais recente global
+    if (rows.length) {
+      const d = new Date(rows[0].ultima_atualizacao);
+      document.getElementById('last-update').textContent = `Atualizado ${d.toLocaleDateString('pt-BR')}`;
+    }
+
+    // Renderiza página de status (se aberta)
+    const grid = document.getElementById('status-grid');
+    if (!grid) return;
+
+    const now = Date.now();
+    grid.innerHTML = rows.map(r => {
+      const cfg   = STATUS_THRESHOLDS[r.tabela] || { label: r.tabela, emoji: '📊', amarelo: 48, vermelho: 168 };
+      const d     = new Date(r.ultima_atualizacao);
+      const horas = (now - d.getTime()) / 36e5;
+      const cor   = horas > cfg.vermelho ? '#EF5350' : horas > cfg.amarelo ? '#FFA726' : '#4CAE4F';
+      const tempo = horas < 1   ? 'há menos de 1h'
+                  : horas < 24  ? `há ${Math.floor(horas)}h`
+                  : horas < 168 ? `há ${Math.floor(horas/24)}d`
+                  : `há ${Math.floor(horas/168)}sem`;
+      const regs  = r.total_registros ? Number(r.total_registros).toLocaleString('pt-BR') : '—';
+
+      return `
+        <div class="card-shell" style="border-left: 3px solid ${cor}">
+          <div class="card-inner">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem">
+              <span style="font-size:.75rem;color:var(--text-2)">${cfg.emoji} ${cfg.label}</span>
+              <span style="width:10px;height:10px;border-radius:50%;background:${cor};display:inline-block;box-shadow:0 0 6px ${cor}88"></span>
+            </div>
+            <div style="font-size:1.1rem;font-weight:700;color:var(--text);line-height:1.2">${tempo}</div>
+            <div style="font-size:.7rem;color:var(--text-3);margin-top:.3rem">${d.toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+            <div style="font-size:.68rem;color:var(--text-3);margin-top:.4rem">${regs} registros</div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    console.error('[loadStatus]', e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+loaded['brasil'] = true;
+loadBrasil();
+loadStatus();
+</script>
+</body>
+</html>
