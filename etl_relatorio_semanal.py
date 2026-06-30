@@ -28,8 +28,15 @@ BRANCO  = (1, 1, 1)
 
 # ── Supabase helper ─────────────────────────────────────────────────────────
 def sb_fetch(table, params=None):
+    """
+    params pode ser dict ou lista de tuplas (para order múltiplo).
+    Ex: [("select","semana,ano"), ("order","ano.desc"), ("order","semana.desc")]
+    """
     PAGE = 1000
-    params = params or {}
+    if params is None:
+        params = []
+    elif isinstance(params, dict):
+        params = list(params.items())
     all_rows = []
     offset = 0
     while True:
@@ -40,7 +47,7 @@ def sb_fetch(table, params=None):
             "Range-Unit": "items",
             "Prefer": "count=none",
         }
-        qs = "&".join(f"{k}={v}" for k, v in params.items())
+        qs = "&".join(f"{k}={v}" for k, v in params)
         url = f"{SUPABASE_URL}/rest/v1/{table}?{qs}" if qs else f"{SUPABASE_URL}/rest/v1/{table}"
         r = requests.get(url, headers=headers, timeout=30)
         r.raise_for_status()
@@ -53,7 +60,7 @@ def sb_fetch(table, params=None):
 
 # ── Coleta de dados ──────────────────────────────────────────────────────────
 def fetch_precos_brasil():
-    rows = sb_fetch("brasil_precos", {"select": "semana,ano,preco_medio,variedade", "order": "ano.desc,semana.desc"})
+    rows = sb_fetch("brasil_precos", [("select","semana,ano,preco_medio,variedade"), ("order","ano.desc"), ("order","semana.desc")])
     anos = sorted(set(r["ano"] for r in rows), reverse=True)
     cur_ano = anos[0] if anos else datetime.now().year
     cur = [r for r in rows if r["ano"] == cur_ano]
@@ -71,7 +78,7 @@ def fetch_precos_brasil():
     return result, cur_ano
 
 def fetch_precos_chile():
-    rows = sb_fetch("chile_precos", {"select": "semana,ano,precio,mercado", "order": "ano.desc,semana.desc"})
+    rows = sb_fetch("chile_precos", [("select","semana,ano,precio,mercado"), ("order","ano.desc"), ("order","semana.desc")])
     if not rows:
         return [], datetime.now().year
     anos = sorted(set(r["ano"] for r in rows), reverse=True)
@@ -101,7 +108,7 @@ def fetch_precos_chile():
     return sorted(dados, key=lambda x: x["semana"]), cur_ano, top_mercado
 
 def fetch_precos_europa():
-    rows = sb_fetch("europa_precos", {"select": "semana,ano,preco_eur", "order": "ano.desc,semana.desc"})
+    rows = sb_fetch("europa_precos", [("select","semana,ano,preco_eur"), ("order","ano.desc"), ("order","semana.desc")])
     if not rows:
         return [], datetime.now().year
     anos = sorted(set(r["ano"] for r in rows), reverse=True)
@@ -116,7 +123,7 @@ def fetch_precos_europa():
     return sorted(dados, key=lambda x: x["semana"]), cur_ano
 
 def fetch_share_brasil():
-    rows = sb_fetch("comexstat_exportacoes", {"select": "pais,kg_liquido,ano", "order": "ano.desc"})
+    rows = sb_fetch("comexstat_exportacoes", [("select","pais,kg_liquido,ano"), ("order","ano.desc")])
     if not rows:
         return [], datetime.now().year
     cur_ano = max(r["ano"] for r in rows)
@@ -129,7 +136,7 @@ def fetch_share_brasil():
     return [{"pais": p, "volume_t": round(v / 1000), "pct": round(v / total_geral * 100, 1) if total_geral else 0} for p, v in top10], cur_ano
 
 def fetch_containers():
-    rows = sb_fetch("v_containers_semanal", {"select": "week,ano,total_containers,flow", "order": "ano.desc,week.desc"})
+    rows = sb_fetch("v_containers_semanal", [("select","week,ano,total_containers,flow"), ("order","ano.desc"), ("order","week.desc")])
     if not rows:
         return {}
     anos = sorted(set(r["ano"] for r in rows), reverse=True)
@@ -152,7 +159,7 @@ def fetch_containers():
 
 def fetch_clima():
     # Clima local: última extração
-    rows_fc = sb_fetch("clima_brasil_forecast", {"select": "cidade,data_previsao,temp_max,temp_min,chuva_mm,descricao,extracted_at", "order": "extracted_at.desc,data_previsao.asc"})
+    rows_fc = sb_fetch("clima_brasil_forecast", [("select","cidade,data_previsao,temp_max,temp_min,chuva_mm,descricao,extracted_at"), ("order","extracted_at.desc"), ("order","data_previsao.asc")])
     cidades = list(dict.fromkeys(r["cidade"] for r in rows_fc))
     resumo = []
     for cidade in cidades[:4]:

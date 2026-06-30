@@ -15,6 +15,9 @@ jobs:
     name: Preços Brasil + Chile + Europa
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      issues: write
+      contents: read
 
     env:
       SUPABASE_URL:     ${{ secrets.SUPABASE_URL }}
@@ -89,6 +92,9 @@ jobs:
     name: Containers (Aschenberg)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      issues: write
+      contents: read
 
     env:
       SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
