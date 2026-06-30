@@ -62,21 +62,21 @@ def sb_fetch(table, params=None):
 
 # ── Coleta de dados ──────────────────────────────────────────────────────────
 def fetch_precos_brasil():
-    rows = sb_fetch("brasil_precos", {"select": "semana,ano,preco_medio,variedade", "order": "ano.desc,semana.desc"})
-    anos = sorted(set(r["ano"] for r in rows), reverse=True)
+    rows = sb_fetch("brasil_precos", {"select": "semana,ano,regiao,tipo,preco_kg", "order": "ano.desc,semana.desc"})
+    anos = sorted(set(int(r["ano"]) for r in rows), reverse=True)
     cur_ano = anos[0] if anos else datetime.now().year
-    cur = [r for r in rows if r["ano"] == cur_ano]
-    variedades = sorted(set(r["variedade"] for r in cur))
+    cur = [r for r in rows if int(r["ano"]) == cur_ano]
+    regioes = sorted(set(r["regiao"] for r in cur))
     result = []
-    for v in variedades[:4]:
-        semanas = sorted(set(r["semana"] for r in cur if r["variedade"] == v), reverse=True)[:4]
+    for reg in regioes[:4]:
+        semanas = sorted(set(int(r["semana"]) for r in cur if r["regiao"] == reg), reverse=True)[:4]
         ultimas = []
         for s in semanas:
-            r = next((x for x in cur if x["variedade"] == v and x["semana"] == s), None)
+            r = next((x for x in cur if x["regiao"] == reg and int(x["semana"]) == s), None)
             if r:
-                ultimas.append({"semana": s, "preco": float(r["preco_medio"] or 0)})
+                ultimas.append({"semana": s, "preco": float(r["preco_kg"] or 0)})
         if ultimas:
-            result.append({"variedade": v, "dados": sorted(ultimas, key=lambda x: x["semana"])})
+            result.append({"variedade": reg, "dados": sorted(ultimas, key=lambda x: x["semana"])})
     return result, cur_ano
 
 def fetch_precos_chile():
@@ -110,18 +110,18 @@ def fetch_precos_chile():
     return sorted(dados, key=lambda x: x["semana"]), cur_ano, top_mercado
 
 def fetch_precos_europa():
-    rows = sb_fetch("europa_precos", {"select": "semana,ano,preco_eur", "order": "ano.desc,semana.desc"})
+    rows = sb_fetch("europa_precos", {"select": "semana,ano,preco_4_5kg", "order": "ano.desc,semana.desc"})
     if not rows:
         return [], datetime.now().year
-    anos = sorted(set(r["ano"] for r in rows), reverse=True)
+    anos = sorted(set(int(r["ano"]) for r in rows), reverse=True)
     cur_ano = anos[0]
-    cur = [r for r in rows if r["ano"] == cur_ano]
-    semanas = sorted(set(r["semana"] for r in cur), reverse=True)[:4]
+    cur = [r for r in rows if int(r["ano"]) == cur_ano]
+    semanas = sorted(set(int(r["semana"]) for r in cur), reverse=True)[:4]
     dados = []
     for s in semanas:
-        r = next((x for x in cur if x["semana"] == s), None)
+        r = next((x for x in cur if int(x["semana"]) == s), None)
         if r:
-            dados.append({"semana": s, "preco": float(r["preco_eur"] or 0)})
+            dados.append({"semana": s, "preco": float(r["preco_4_5kg"] or 0)})
     return sorted(dados, key=lambda x: x["semana"]), cur_ano
 
 def fetch_share_brasil():
