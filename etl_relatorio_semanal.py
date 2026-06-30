@@ -148,7 +148,7 @@ def send_email(pdf_bytes):
         "html": f"""
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
           <div style="background:#4CAE4F;padding:24px;border-radius:8px 8px 0 0;display:flex;align-items:center;gap:16px">
-            <img src="cid:logo_tfruits" alt="TFruits" style="height:60px;width:auto;display:block"/>
+            <img src="data:image/png;base64,{LOGO_B64}" alt="TFruits" style="height:60px;width:auto;display:block"/>
             <div>
               <h1 style="color:white;margin:0;font-size:22px">BI Limão — Relatório Semanal</h1>
               <p style="color:rgba(255,255,255,.85);margin:6px 0 0">{semana_label} · {DATA_PT}</p>
@@ -176,12 +176,6 @@ def send_email(pdf_bytes):
             {
                 "filename": nome_arquivo,
                 "content": base64.b64encode(pdf_bytes).decode(),
-            },
-            {
-                "filename": "logo_tfruits.png",
-                "content": LOGO_B64,
-                "content_id": "logo_tfruits",
-                "inline": True,
             },
         ],
     }
