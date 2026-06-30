@@ -105,36 +105,25 @@ def main():
 
     print("\n[2] Enviando ao Supabase...")
     try:
-        import os, json, requests as req
-        from pathlib import Path as _P
-        # Carrega .env se existir
-        env_file = _P(__file__).parent / ".env"
-        env = {}
-        if env_file.exists():
-            for line in env_file.read_text().splitlines():
-                if "=" in line and not line.startswith("#"):
-                    k, v = line.split("=", 1)
-                    env[k.strip()] = v.strip()
-        url = os.environ.get("SUPABASE_URL") or env.get("SUPABASE_URL", "")
-        key = os.environ.get("SUPABASE_KEY") or env.get("SUPABASE_KEY", "")
-        if not url or not key:
-            raise ValueError("SUPABASE_URL ou SUPABASE_KEY não encontrados")
-        hdrs = {"apikey": key, "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json", "Prefer": "return=minimal"}
+        from supabase_upsert import insert, SUPABASE_URL, SUPABASE_KEY
+        import requests as req
 
-        # Deletar registros existentes do mercado Agregado e reinserir
-        del_r = req.delete(f"{url}/rest/v1/europa_precos?mercado=eq.Agregado", headers=hdrs)
+        hdrs = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json"}
+
+        # Deletar registros existentes do mercado Agregado antes de reinserir
+        del_r = req.delete(
+            f"{SUPABASE_URL}/rest/v1/europa_precos",
+            headers=hdrs,
+            params={"mercado": "eq.Agregado"},
+            timeout=30
+        )
         print(f"    Delete existentes: HTTP {del_r.status_code}")
 
-        total = 0
-        for i in range(0, len(records), 500):
-            r = req.post(f"{url}/rest/v1/europa_precos", headers=hdrs,
-                         data=json.dumps(records[i:i+500]))
-            if r.ok:
-                total += len(records[i:i+500])
-            else:
-                print(f"    Erro batch {i}: {r.status_code} {r.text[:100]}")
-        print(f"    OK: {total} registros inseridos")
+        result = insert("europa_precos", records)
+        print(f"    OK: {result['inserted']} registros inseridos")
+        if result.get("errors"):
+            print(f"    Erros: {result['errors'][:3]}")
     except Exception as e:
         print(f"    ERRO Supabase: {e}")
         sys.exit(1)
