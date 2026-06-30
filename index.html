@@ -721,6 +721,56 @@ const tooltipEUR = {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// PREDIÇÃO — regressão linear simples
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * predictLinear(series, nFuture, window)
+ * Recebe array de {x, y} (x = índice, y = valor), usa regressão linear
+ * nas últimas `window` semanas e projeta `nFuture` pontos à frente.
+ * Retorna array de valores projetados (números).
+ */
+function predictLinear(series, nFuture = 4, window = 12) {
+  const pts = series.filter(p => p.y != null);
+  if (pts.length < 4) return [];
+  const last = pts.slice(-window);
+  const n = last.length;
+  const sumX  = last.reduce((s,p,i) => s + i, 0);
+  const sumY  = last.reduce((s,p) => s + p.y, 0);
+  const sumXY = last.reduce((s,p,i) => s + i * p.y, 0);
+  const sumX2 = last.reduce((s,_,i) => s + i * i, 0);
+  const denom = n * sumX2 - sumX * sumX;
+  if (denom === 0) return Array(nFuture).fill(+(sumY / n).toFixed(4));
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+  return Array.from({ length: nFuture }, (_, i) =>
+    +Math.max(0, intercept + slope * (n + i)).toFixed(4)
+  );
+}
+
+/**
+ * trendDs(label, nullPad, predValues, color)
+ * Cria dataset Chart.js com linha tracejada para a tendência.
+ * nullPad = número de pontos históricos (preenchidos com null).
+ */
+function trendDs(label, nullPad, predValues, color = 'rgba(200,200,200,.7)') {
+  return {
+    label,
+    data: [...Array(nullPad).fill(null), ...predValues],
+    borderColor: color,
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderDash: [6, 4],
+    pointRadius: 3,
+    pointStyle: 'rectRot',
+    pointHoverRadius: 6,
+    tension: 0.3,
+    fill: false,
+    order: -1,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // KPI BUILDER
 // ═══════════════════════════════════════════════════════════════
 function renderKpis(containerId, kpis) {
@@ -792,10 +842,8 @@ async function loadBrasil() {
 
 // Histórico comparativo: uma linha por ano, eixo X = semana ISO
 function drawBrasilHistorico(data, anos, regiao) {
-  // Usa apenas fonte HF Brasil para séries históricas consistentes
   const hf = data.filter(d => d.tipo === 'HF Brasil');
   const filtered = hf.filter(d => d.regiao === regiao);
-  // Semanas presentes em qualquer ano
   const semanas = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
   const datasets = anos.map((ano, i) =>
     lineDs(String(ano), semanas.map(s => {
@@ -803,12 +851,24 @@ function drawBrasilHistorico(data, anos, regiao) {
       return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_kg,0)/rows.length).toFixed(3) : null;
     }), PALETTE[i % PALETTE.length])
   );
+
+  // Tendência: usa o ano mais recente como base
+  const curAno = Math.max(...anos);
+  const curSeries = semanas.map((s, i) => {
+    const rows = filtered.filter(d => d.ano === curAno && d.semana === s);
+    return { x: i, y: rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_kg,0)/rows.length).toFixed(3) : null };
+  });
+  const pred = predictLinear(curSeries, 4, 12);
+  const predLabels = Array.from({length:4}, (_,i) => `→S${semanas.at(-1)+i+1}`);
+  datasets.push(trendDs(`Tendência ${curAno}`, semanas.length, pred));
+
   mkChart('chartBrasilHistorico', {
     type: 'line',
-    data: { labels: semanas.map(s=>`S${s}`), datasets },
+    data: { labels: [...semanas.map(s=>`S${s}`), ...predLabels], datasets },
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'}}, scales:scalesLine,
-      spanGaps: true }
+      plugins:{legend:{position:'bottom'},
+        tooltip:{callbacks:{footer: items => items.some(i=>i.dataset.label?.startsWith('Tendência')) ? '⚠ Estimativa — uso indicativo' : ''}}},
+      scales:scalesLine, spanGaps:true }
   });
 }
 
@@ -919,11 +979,24 @@ function drawChileHistorico(data, anos, mercado) {
       return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(4) : null;
     }), PALETTE[i % PALETTE.length])
   );
+
+  // Tendência ano mais recente
+  const curAno = Math.max(...anos);
+  const curSeries = semanas.map((s, i) => {
+    const rows = filtered.filter(d => d.ano === curAno && d.semana === s);
+    return { x: i, y: rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(4) : null };
+  });
+  const pred = predictLinear(curSeries, 4, 12);
+  const predLabels = Array.from({length:4}, (_,i) => `→S${semanas.at(-1)+i+1}`);
+  datasets.push(trendDs(`Tendência ${curAno}`, semanas.length, pred));
+
   mkChart('chartChileHistorico', {
     type: 'line',
-    data: { labels: semanas.map(s=>`S${s}`), datasets },
+    data: { labels: [...semanas.map(s=>`S${s}`), ...predLabels], datasets },
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'}, tooltip: tooltipUSD}, scales:scalesUSD, spanGaps:true }
+      plugins:{legend:{position:'bottom'}, tooltip:{...tooltipUSD, callbacks:{...tooltipUSD.callbacks,
+        footer: items => items.some(i=>i.dataset.label?.startsWith('Tendência')) ? '⚠ Estimativa — uso indicativo' : ''}}},
+      scales:scalesUSD, spanGaps:true }
   });
 }
 
@@ -1005,11 +1078,23 @@ async function loadEuropa() {
       return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null;
     }), PALETTE[i % PALETTE.length])
   );
+
+  // Tendência ano mais recente
+  const curSeries = todasSemanas.map((s, i) => {
+    const rows = data.filter(d => d.ano === curAno && d.semana === s);
+    return { x: i, y: rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null };
+  });
+  const pred = predictLinear(curSeries, 4, 12);
+  const predLabels = Array.from({length:4}, (_,i) => `→S${todasSemanas.at(-1)+i+1}`);
+  datasets.push(trendDs(`Tendência ${curAno}`, todasSemanas.length, pred));
+
   mkChart('chartEuropaHistorico', {
     type: 'line',
-    data: { labels: todasSemanas.map(s=>`S${s}`), datasets },
+    data: { labels: [...todasSemanas.map(s=>`S${s}`), ...predLabels], datasets },
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'}, tooltip: tooltipEUR}, scales:scalesEUR, spanGaps:true }
+      plugins:{legend:{position:'bottom'}, tooltip:{...tooltipEUR, callbacks:{...tooltipEUR.callbacks,
+        footer: items => items.some(i=>i.dataset.label?.startsWith('Tendência')) ? '⚠ Estimativa — uso indicativo' : ''}}},
+      scales:scalesEUR, spanGaps:true }
   });
 
   // ── Últimas 4 semanas
