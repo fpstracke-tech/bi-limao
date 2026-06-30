@@ -1,0 +1,60 @@
+name: ETL Mensal — Comexstat
+
+on:
+  schedule:
+    - cron: '0 10 2 * *'   # Todo dia 2 do mês às 07:00 BRT (10:00 UTC)
+                            # Dia 2 para garantir que o MDIC já publicou os dados do mês anterior
+  workflow_dispatch:
+
+jobs:
+  etl-comexstat:
+    name: Share Brasil (Comexstat MDIC)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      SUPABASE_URL:     ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY:     ${{ secrets.SUPABASE_KEY }}
+      PYTHONIOENCODING: utf-8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependências
+        run: pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: ETL Comexstat
+        id: comexstat
+        run: python etl_comexstat.py
+
+      - name: Resumo
+        if: always()
+        run: echo "Comexstat: ${{ steps.comexstat.outcome }} — $(date -u '+%Y-%m-%d %H:%M UTC')"
+
+      - name: Abrir issue em caso de falha
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `❌ Falha ETL Comexstat — ${new Date().toISOString().slice(0,16).replace('T',' ')} UTC`;
+            const body = [
+              `**Workflow:** ${context.workflow}`,
+              `**Run:** ${context.runId}`,
+              `**Link:** https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              'Possível causa: API Comexstat fora do ar ou mudança de endpoint.',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['etl-falha', 'comexstat'],
+            });

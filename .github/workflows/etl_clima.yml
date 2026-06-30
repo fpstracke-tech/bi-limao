@@ -1,0 +1,74 @@
+name: ETL Clima — 2x por dia
+
+on:
+  schedule:
+    - cron: '0 11 * * *'   # 08:00 BRT (UTC-3)
+    - cron: '0 23 * * *'   # 20:00 BRT (UTC-3)
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Ativar output verboso'
+        required: false
+        default: 'false'
+
+jobs:
+  etl-clima:
+    name: Clima Local + Global
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      SUPABASE_URL:     ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY:     ${{ secrets.SUPABASE_KEY }}
+      HG_API_KEY:       ${{ secrets.HG_API_KEY }}
+      OWM_API_KEY:      ${{ secrets.OWM_API_KEY }}
+      PYTHONIOENCODING: utf-8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependências
+        run: pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: ETL Clima Local (HG Brasil)
+        id: clima_local
+        run: python etl_clima_brasil.py
+
+      - name: ETL Clima Global (OpenWeatherMap)
+        id: clima_global
+        run: python etl_clima_openweather.py
+
+      - name: Resumo
+        if: always()
+        run: |
+          echo "### Resultado ETL Clima — $(date -u '+%Y-%m-%d %H:%M UTC')"
+          echo "Clima Local:  ${{ steps.clima_local.outcome }}"
+          echo "Clima Global: ${{ steps.clima_global.outcome }}"
+
+      - name: Abrir issue em caso de falha
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `❌ Falha ETL Clima — ${new Date().toISOString().slice(0,16).replace('T',' ')} UTC`;
+            const body = [
+              `**Workflow:** ${context.workflow}`,
+              `**Run:** ${context.runId}`,
+              `**Link:** https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              'Verifique os logs acima para identificar o problema.',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['etl-falha', 'clima'],
+            });
