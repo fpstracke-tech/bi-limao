@@ -9,7 +9,6 @@ import io
 import json
 import math
 import requests
-from urllib.parse import urlencode
 from datetime import datetime, timezone
 
 # ── Configuração ────────────────────────────────────────────────────────────
@@ -46,8 +45,11 @@ def sb_fetch(table, params=None):
             "Range-Unit": "items",
             "Prefer": "count=none",
         }
-        # urlencode garante que vírgulas em "order" fiquem como %2C — aceito pelo Supabase
-        qs = urlencode(params)
+        # Monta query string manualmente: select/filter com vírgulas literais, order sem encode
+        parts = []
+        for k, v in params.items():
+            parts.append(f"{k}={v}")
+        qs = "&".join(parts)
         url = f"{SUPABASE_URL}/rest/v1/{table}?{qs}" if qs else f"{SUPABASE_URL}/rest/v1/{table}"
         r = requests.get(url, headers=headers, timeout=30)
         r.raise_for_status()
