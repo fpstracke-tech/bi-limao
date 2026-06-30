@@ -2,8 +2,7 @@ name: ETL Mensal — Comexstat
 
 on:
   schedule:
-    - cron: '0 10 2 * *'   # Todo dia 2 do mês às 07:00 BRT (10:00 UTC)
-                            # Dia 2 para garantir que o MDIC já publicou os dados do mês anterior
+    - cron: '0 10 10 * *'  # Todo dia 10 do mês às 07:00 BRT (10:00 UTC)
   workflow_dispatch:
 
 jobs:

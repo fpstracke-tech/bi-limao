@@ -2,8 +2,7 @@ name: ETL Clima — 2x por dia
 
 on:
   schedule:
-    - cron: '0 11 * * *'   # 08:00 BRT (UTC-3)
-    - cron: '0 23 * * *'   # 20:00 BRT (UTC-3)
+    - cron: '0 9 * * 1'   # Toda segunda-feira às 06:00 BRT (09:00 UTC)
   workflow_dispatch:
     inputs:
       debug:
