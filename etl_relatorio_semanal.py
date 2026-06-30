@@ -26,12 +26,13 @@ SUBJECT  = f"📊 Relatório Semanal BI Limão — {hoje.strftime('%d/%m/%Y')}"
 
 # Abas a capturar: (data-page, label)
 ABAS = [
-    ("brasil",       "Preços Brasil"),
-    ("chile",        "Preços Chile"),
-    ("europa",       "Preços Europa"),
-    ("share",        "Share Brasil"),
-    ("containers",   "Containers"),
-    ("clima-local",  "Clima Local"),
+    ("brasil",        "Preços Brasil"),
+    ("chile",         "Preços Chile"),
+    ("europa",        "Preços Europa"),
+    ("share",         "Share Brasil"),
+    ("containers",    "Containers"),
+    ("clima-local",   "Clima Local"),
+    ("clima-global",  "Clima Global"),
 ]
 
 # ── Screenshot via Playwright ────────────────────────────────────────────────
@@ -53,14 +54,27 @@ def capturar_screenshots():
         page.wait_for_selector(".kpi-card, .kpi-value, canvas", timeout=30000)
         page.wait_for_timeout(3000)  # aguarda animações
 
+        # Tempo de espera por aba (ms) — Chile demora mais por buscar câmbio externo
+        WAIT = {
+            "chile": 8000,
+        }
+        DEFAULT_WAIT = 3500
+
         for data_page, label in ABAS:
             print(f"  Capturando: {label}...")
 
-            # Clica na nav-item correspondente
-            page.click(f'[data-page="{data_page}"]')
-            page.wait_for_timeout(2500)  # aguarda renderização dos gráficos
+            # Clica na sidebar (nav-item), não na barra mobile
+            page.click(f'.nav-item[data-page="{data_page}"]')
+            wait_ms = WAIT.get(data_page, DEFAULT_WAIT)
+            page.wait_for_timeout(wait_ms)
 
-            # Screenshot full-page da área de conteúdo
+            # Aguarda spinner sumir se houver
+            try:
+                page.wait_for_selector(".loading", state="hidden", timeout=10000)
+            except Exception:
+                pass
+
+            # Screenshot da viewport
             png = page.screenshot(full_page=False)
             screenshots.append((label, png))
             print(f"    ✓ {len(png):,} bytes")
