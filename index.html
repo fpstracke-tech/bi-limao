@@ -708,7 +708,7 @@ const scalesUSD = {
        ticks: { callback: v => `$${v.toFixed(2)}` } }
 };
 const tooltipUSD = {
-  callbacks: { label: ctx => ` ${ctx.dataset.label}: $${(+ctx.raw).toFixed(3)}` }
+  callbacks: { label: ctx => ` ${ctx.dataset.label}: $${(+ctx.raw).toFixed(2)}` }
 };
 
 const scalesEUR = {
@@ -939,7 +939,7 @@ async function loadChile() {
   const topMercado = Object.entries(contagem).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
 
   renderKpis('chile-kpis', [
-    { label: 'Preço médio', value: `US$ ${avgPrice.toFixed(3)}`, unit: 'USD/kg', trend },
+    { label: 'Preço médio', value: `US$ ${avgPrice.toFixed(2)}`, unit: 'USD/kg', trend },
     { label: 'Mercados', value: mercados.length, unit: 'monitorados' },
     { label: 'Registros', value: data.length, unit: 'histórico' },
     { label: 'Semana atual', value: lastSem, unit: `/${curAno}` },
