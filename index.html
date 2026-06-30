@@ -1507,7 +1507,7 @@ async function loadContainers() {
     });
     const t = document.getElementById('cont-table');
     t.querySelector('thead').innerHTML = `<tr><th>Semana</th><th>Shipped</th><th>Arrivals</th><th>Saldo</th></tr>`;
-    t.querySelector('tbody').innerHTML = [...semanas].reverse().map(w=>{
+    t.querySelector('tbody').innerHTML = [...semanas].map(w=>{
       const sv=shippedD[semanas.indexOf(w)]||0, av=arrivalsD[semanas.indexOf(w)]||0;
       const diff=sv-av;
       return `<tr><td>S${w}/${ano}</td><td>${sv||'—'}</td><td>${av||'—'}</td>
