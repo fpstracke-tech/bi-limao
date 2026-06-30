@@ -83,9 +83,9 @@ def fetch_precos_chile():
     rows = sb_fetch("chile_precos", {"select": "semana,ano,precio,mercado", "order": "ano.desc,semana.desc"})
     if not rows:
         return [], datetime.now().year
-    anos = sorted(set(r["ano"] for r in rows), reverse=True)
+    anos = sorted(set(int(r["ano"]) for r in rows), reverse=True)
     cur_ano = anos[0]
-    cur = [r for r in rows if r["ano"] == cur_ano]
+    cur = [r for r in rows if int(r["ano"]) == cur_ano]
     # top mercado por registros
     mercado_count = {}
     for r in cur:
@@ -101,10 +101,10 @@ def fetch_precos_chile():
     except Exception:
         pass
     mercado_rows = [r for r in cur if r["mercado"] == top_mercado]
-    semanas = sorted(set(r["semana"] for r in mercado_rows), reverse=True)[:4]
+    semanas = sorted(set(int(r["semana"]) for r in mercado_rows), reverse=True)[:4]
     dados = []
     for s in semanas:
-        r = next((x for x in mercado_rows if x["semana"] == s), None)
+        r = next((x for x in mercado_rows if int(x["semana"]) == s), None)
         if r:
             dados.append({"semana": s, "preco": round(float(r["precio"] or 0) * clp_usd, 2)})
     return sorted(dados, key=lambda x: x["semana"]), cur_ano, top_mercado
@@ -128,8 +128,8 @@ def fetch_share_brasil():
     rows = sb_fetch("comexstat_exportacoes", {"select": "pais,kg_liquido,ano", "order": "ano.desc"})
     if not rows:
         return [], datetime.now().year
-    cur_ano = max(r["ano"] for r in rows)
-    cur = [r for r in rows if r["ano"] == cur_ano]
+    cur_ano = max(int(r["ano"]) for r in rows)
+    cur = [r for r in rows if int(r["ano"]) == cur_ano]
     totais = {}
     for r in cur:
         totais[r["pais"]] = totais.get(r["pais"], 0) + float(r["kg_liquido"] or 0)
@@ -138,18 +138,18 @@ def fetch_share_brasil():
     return [{"pais": p, "volume_t": round(v / 1000), "pct": round(v / total_geral * 100, 1) if total_geral else 0} for p, v in top10], cur_ano
 
 def fetch_containers():
-    rows = sb_fetch("v_containers_semanal", {"select": "week,ano,total_containers,flow", "order": "ano.desc,week.desc"})
+    rows = sb_fetch("v_containers_semanal", {"select": "week,year,total_containers,flow", "order": "year.desc,week.desc"})
     if not rows:
         return {}
-    anos = sorted(set(r["ano"] for r in rows), reverse=True)
+    anos = sorted(set(int(r["year"]) for r in rows), reverse=True)
     cur_ano = anos[0]
-    cur = [r for r in rows if r["ano"] == cur_ano]
-    shipped = [r for r in cur if r["flow"] == "Shipped" and (r["total_containers"] or 0) > 0]
-    arrivals = [r for r in cur if r["flow"] == "Arrivals" and (r["total_containers"] or 0) > 0]
-    last_shipped  = max((r["week"] for r in shipped),  default=0)
-    last_arrivals = max((r["week"] for r in arrivals), default=0)
+    cur = [r for r in rows if int(r["year"]) == cur_ano]
+    shipped = [r for r in cur if r["flow"] == "Shipped" and int(r["total_containers"] or 0) > 0]
+    arrivals = [r for r in cur if r["flow"] == "Arrivals" and int(r["total_containers"] or 0) > 0]
+    last_shipped  = max((int(r["week"]) for r in shipped),  default=0)
+    last_arrivals = max((int(r["week"]) for r in arrivals), default=0)
     def get_val(data, week):
-        r = next((x for x in data if x["week"] == week), None)
+        r = next((x for x in data if int(x["week"]) == week), None)
         return int(r["total_containers"]) if r else 0
     return {
         "shipped":  get_val(shipped,  last_shipped),
