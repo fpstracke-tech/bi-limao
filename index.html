@@ -1148,7 +1148,7 @@ function drawEuropaLine(data, ano) {
 async function loadClimaLocal() {
   const [atual, forecast] = await Promise.all([
     sbFetch('clima_brasil_atual', { select:'cidade,data_ref,temp_c,humidade_pct,chuva_mm,descricao,vento_kmh', order:'extracted_at.desc', limit:50 }),
-    sbFetch('clima_brasil_forecast', { select:'cidade,data_previsao,extracted_at,temp_max,temp_min,chuva_mm,prob_chuva_pct,descricao', order:'data_previsao.asc', limit:200 })
+    sbFetch('clima_brasil_forecast', { select:'cidade,data_previsao,extracted_at,temp_max,temp_min,chuva_mm,prob_chuva_pct,descricao', order:'extracted_at.desc,data_previsao.asc' })
   ]);
 
   // Pega snapshot mais recente por cidade
