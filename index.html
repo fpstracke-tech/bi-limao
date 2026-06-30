@@ -528,7 +528,14 @@
       <div class="card-shell" style="margin-top:1rem">
         <div class="card-inner">
           <div class="chart-header" style="margin-bottom:.8rem"><span class="chart-title">Tabela por país / mês</span>
-            <select class="styled-select" id="share-table-ano"></select>
+            <div style="display:flex;gap:.5rem;align-items:center">
+              <select class="styled-select" id="share-table-sort">
+                <option value="az">A → Z</option>
+                <option value="desc">Maior volume</option>
+                <option value="asc">Menor volume</option>
+              </select>
+              <select class="styled-select" id="share-table-ano"></select>
+            </div>
           </div>
           <div class="table-wrap"><table id="share-table"><thead></thead><tbody></tbody></table></div>
         </div>
@@ -1420,20 +1427,26 @@ async function loadShare() {
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:scalesLine}
     });
   }
+  const selSort = document.getElementById('share-table-sort');
   function drawShareTable(ano) {
-    const paisesT = [...new Set(data.filter(d=>d.ano===+ano).map(d=>d.pais))].sort();
-    const meses   = [...new Set(data.filter(d=>d.ano===+ano).map(d=>d.mes))].sort((a,b)=>a-b);
-    const ML      = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-    const t       = document.getElementById('share-table');
+    const sort  = selSort.value;
+    const meses = [...new Set(data.filter(d=>d.ano===+ano).map(d=>d.mes))].sort((a,b)=>a-b);
+    const ML    = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const paisTotais = [...new Set(data.filter(d=>d.ano===+ano).map(d=>d.pais))]
+      .map(p => ({ p, tot: data.filter(d=>d.ano===+ano&&d.pais===p).reduce((s,d)=>s+ +d.kg_liquido,0) }));
+    if (sort === 'az')   paisTotais.sort((a,b) => a.p.localeCompare(b.p));
+    if (sort === 'desc') paisTotais.sort((a,b) => b.tot - a.tot);
+    if (sort === 'asc')  paisTotais.sort((a,b) => a.tot - b.tot);
+    const t = document.getElementById('share-table');
     t.querySelector('thead').innerHTML = `<tr><th>País</th>${meses.map(m=>`<th>${ML[m-1]}</th>`).join('')}<th>Total</th></tr>`;
-    t.querySelector('tbody').innerHTML = paisesT.map(p=>{
+    t.querySelector('tbody').innerHTML = paisTotais.map(({p, tot})=>{
       const row = meses.map(m=>{ const r=data.find(d=>d.ano===+ano&&d.mes===m&&d.pais===p); return r?Math.round(+r.kg_liquido/1000)+'t':'—'; });
-      const tot = data.filter(d=>d.ano===+ano&&d.pais===p).reduce((s,d)=>s+ +d.kg_liquido,0);
       return `<tr><td>${p}</td>${row.map(v=>`<td>${v}</td>`).join('')}<td><span class="badge">${Math.round(tot/1000)}t</span></td></tr>`;
     }).join('');
   }
   selAno.addEventListener('change', ()=>drawShareLine(selAno.value));
   selAnot.addEventListener('change', ()=>drawShareTable(selAnot.value));
+  selSort.addEventListener('change', ()=>drawShareTable(selAnot.value));
   drawShareLine(curAno); drawShareTable(curAno);
 }
 
