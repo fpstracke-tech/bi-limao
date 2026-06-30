@@ -1454,7 +1454,9 @@ async function loadContainers() {
   const arrivals = data.filter(d=>d.flow==='Arrivals');
   const totShip  = curData.filter(d=>d.flow==='Shipped').reduce((s,d)=>s+d.total_containers,0);
   const totArr   = curData.filter(d=>d.flow==='Arrivals').reduce((s,d)=>s+d.total_containers,0);
-  const lastWeek = Math.max(...curData.map(d=>d.week));
+  // Última semana com dados reais de Shipped (ignora semanas futuras vazias)
+  const weeksWithShipped = curData.filter(d=>d.flow==='Shipped'&&d.total_containers>0).map(d=>d.week);
+  const lastWeek = weeksWithShipped.length ? Math.max(...weeksWithShipped) : Math.max(...curData.map(d=>d.week));
   const lastShip = curData.find(d=>d.week===lastWeek&&d.flow==='Shipped')?.total_containers||0;
   const prevShip = curData.find(d=>d.week===lastWeek-1&&d.flow==='Shipped')?.total_containers||0;
   const trend    = prevShip ? ((lastShip-prevShip)/prevShip)*100 : null;
