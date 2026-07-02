@@ -194,6 +194,10 @@
   .rain-badge { display:inline-block; margin-top:.4rem; padding:.2rem .5rem; border-radius:4px; font-size:.65rem; font-weight:600; }
   .rain-badge.warn   { background:rgba(245,131,78,.15); color:#F5834E; border:1px solid rgba(245,131,78,.4); }
   .rain-badge.critic { background:rgba(239,83,80,.15);  color:#EF5350; border:1px solid rgba(239,83,80,.4); animation: pulse-rain 1.5s ease-in-out infinite; }
+  .cold-badge { display:inline-block; margin-top:.2rem; padding:.2rem .5rem; border-radius:4px; font-size:.65rem; font-weight:600; }
+  .cold-badge.warn   { background:rgba(56,189,248,.12); color:#38BDF8; border:1px solid rgba(56,189,248,.35); }
+  .cold-badge.critic { background:rgba(129,140,248,.2); color:#818CF8; border:1px solid rgba(129,140,248,.5); animation:pulse-rain 1.5s ease-in-out infinite; }
+  .fungal-badge { display:inline-block; margin-top:.2rem; padding:.2rem .5rem; border-radius:4px; font-size:.65rem; font-weight:600; background:rgba(167,139,250,.12); color:#A78BFA; border:1px solid rgba(167,139,250,.4); }
   @keyframes pulse-rain { 0%,100%{opacity:1} 50%{opacity:.6} }
 
   /* ── MOBILE NAV ──────────────────────────────────────────────── */
@@ -1240,6 +1244,12 @@ const RAIN_WARN   = 50;   // mm acumulado 7 dias
 const RAIN_CRITIC = 100;  // mm acumulado 7 dias
 const RAIN_DAY_WARN   = 20; // mm em um único dia
 const RAIN_DAY_CRITIC = 40; // mm em um único dia
+const COLD_WARN   = 12;  // °C mínima prevista → friagem
+const COLD_CRITIC =  8;  // °C mínima prevista → risco de geada
+const FUNGAL_HUM  = 85;  // % umidade mínima para risco fúngico
+const FUNGAL_TMIN = 18;  // °C temp_max mínima da faixa favorável a fungos (Gomose/Verrugose)
+const FUNGAL_TMAX = 28;  // °C temp_max máxima da faixa favorável a fungos
+const FUNGAL_DAYS =  3;  // dias consecutivos para disparar alerta fúngico
 
 function rainAlert(totalMm, maxDayMm) {
   if (totalMm >= RAIN_CRITIC || maxDayMm >= RAIN_DAY_CRITIC)
@@ -1256,13 +1266,54 @@ function getFcRain(forecast, cidade, extractedAt) {
   return { total, maxDay };
 }
 
+function getFcLatest(forecast, cidade, extractedAt) {
+  return forecast
+    .filter(f => f.cidade === cidade && f.extracted_at === extractedAt)
+    .sort((a, b) => a.data_previsao.localeCompare(b.data_previsao))
+    .slice(0, 7);
+}
+
+function coldAlert(minTemp) {
+  if (minTemp === null || minTemp === undefined || !isFinite(minTemp)) return null;
+  if (+minTemp <= COLD_CRITIC)
+    return { level:'critic', html:`<span class="cold-badge critic">🧊 ${minTemp}°C mín prevista</span>` };
+  if (+minTemp <= COLD_WARN)
+    return { level:'warn', html:`<span class="cold-badge warn">❄ ${minTemp}°C mín prevista</span>` };
+  return null;
+}
+
+function fungalAlert(fcRows) {
+  // Detecta sequência de dias com umidade alta + temperatura na faixa favorável a Gomose/Verrugose
+  let consec = 0, maxConsec = 0;
+  for (const f of fcRows) {
+    const h = +f.humidade_pct || 0;
+    const t = +f.temp_max || 0;
+    if (h >= FUNGAL_HUM && t >= FUNGAL_TMIN && t <= FUNGAL_TMAX) {
+      consec++;
+      maxConsec = Math.max(maxConsec, consec);
+    } else {
+      consec = 0;
+    }
+  }
+  if (maxConsec >= FUNGAL_DAYS)
+    return { level:'warn', html:`<span class="fungal-badge">🍄 ${maxConsec}d risco fúngico</span>` };
+  return null;
+}
+
+function alertBorderColor(alerts) {
+  const levels = alerts.filter(Boolean).map(a => a.level);
+  if (levels.includes('critic')) return 'rgba(239,83,80,.5)';
+  if (levels.includes('warn'))   return 'rgba(245,131,78,.4)';
+  return null;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // ── CLIMA LOCAL ──────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════
 async function loadClimaLocal() {
   const [atual, forecast] = await Promise.all([
     sbFetch('clima_brasil_atual', { select:'cidade,data_ref,temp_c,humidade_pct,chuva_mm,descricao,vento_kmh', order:'extracted_at.desc', limit:50 }),
-    sbFetch('clima_brasil_forecast', { select:'cidade,data_previsao,extracted_at,temp_max,temp_min,chuva_mm,prob_chuva_pct,descricao', order:'extracted_at.desc,data_previsao.asc' })
+    sbFetch('clima_brasil_forecast', { select:'cidade,data_previsao,extracted_at,temp_max,temp_min,humidade_pct,chuva_mm,prob_chuva_pct,descricao', order:'extracted_at.desc,data_previsao.asc' })
   ]);
 
   // Pega snapshot mais recente por cidade
@@ -1276,13 +1327,20 @@ async function loadClimaLocal() {
   const container = document.getElementById('clima-cards');
   container.innerHTML = '';
   latest.forEach((c, i) => {
-    const { total, maxDay } = getFcRain(forecast, c.cidade, maxExtByCity[c.cidade] || '');
-    const alerta = rainAlert(total, maxDay);
+    const fcRows    = getFcLatest(forecast, c.cidade, maxExtByCity[c.cidade] || '');
+    const total     = fcRows.reduce((s, f) => s + (+f.chuva_mm || 0), 0);
+    const maxDay    = Math.max(0, ...fcRows.map(f => +f.chuva_mm || 0));
+    const alertaChuva  = rainAlert(total, maxDay);
+    const tempMins  = fcRows.map(f => +f.temp_min).filter(v => !isNaN(v));
+    const alertaFrio   = coldAlert(tempMins.length ? Math.min(...tempMins) : null);
+    const alertaFungo  = fungalAlert(fcRows);
+    const maxProb   = fcRows.length ? Math.max(...fcRows.map(f => +f.prob_chuva_pct || 0)) : 0;
+    const borderColor  = alertBorderColor([alertaChuva, alertaFrio, alertaFungo]);
+
     const div = document.createElement('div');
     div.className = 'card-shell cidade-card';
     div.style.animationDelay = `${i * .07}s`;
-    if (alerta?.level === 'critic') div.style.borderColor = 'rgba(239,83,80,.5)';
-    else if (alerta?.level === 'warn') div.style.borderColor = 'rgba(245,131,78,.4)';
+    if (borderColor) div.style.borderColor = borderColor;
     div.innerHTML = `<div class="card-inner">
       <div class="cidade-nome">${c.cidade}</div>
       <div class="cidade-temp">${c.temp_c}°</div>
@@ -1291,8 +1349,11 @@ async function loadClimaLocal() {
         <span>💧 ${c.humidade_pct || 0}%</span>
         <span>🌧 ${c.chuva_mm || 0}mm</span>
         <span>💨 ${c.vento_kmh || '—'}</span>
+        ${maxProb > 0 ? `<span>🌦 ${maxProb}% prob</span>` : ''}
       </div>
-      ${alerta ? alerta.html : ''}
+      ${alertaChuva ? alertaChuva.html : ''}
+      ${alertaFrio  ? alertaFrio.html  : ''}
+      ${alertaFungo ? alertaFungo.html : ''}
     </div>`;
     container.appendChild(div);
   });
