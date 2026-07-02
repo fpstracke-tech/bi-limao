@@ -142,12 +142,39 @@ def extract_all(page) -> list[dict]:
     all_data = []
     from_label, to_label = FILTER_COMBINATIONS[0]
 
+    # ── Aplicar filtros From / To ──────────────────────────────────────────────
+    print(f"\n  Aplicando filtros: From={from_label} | To={to_label}")
+    try:
+        # From: primeiro select com "Brasil" ou label "From:"
+        from_sel = page.locator("select").filter(has_text="Brasil").first
+        if from_sel.count():
+            from_sel.select_option(label=from_label)
+            time.sleep(1)
+            print(f"    ✅ From: {from_label}")
+        else:
+            print(f"    ⚠️  Select 'From' não encontrado")
+    except Exception as e:
+        print(f"    ⚠️  Erro ao setar From: {e}")
+
+    try:
+        # To: select que contém "Europe"
+        to_sel = page.locator("select").filter(has_text="Europe").first
+        if to_sel.count():
+            to_sel.select_option(label=to_label)
+            time.sleep(1)
+            print(f"    ✅ To: {to_label}")
+        else:
+            print(f"    ⚠️  Select 'To' não encontrado")
+    except Exception as e:
+        print(f"    ⚠️  Erro ao setar To: {e}")
+
+    wait_for_table(page, timeout=10)
+
     for flow in ["Shipped", "Arrivals"]:
         print(f"\n  Fluxo: {flow} | {from_label} → {to_label}")
 
         # Shipped/Arrivals são <option> dentro de <select> — usar select_option
         try:
-            # Encontrar o select que contém Shipped/Arrivals
             sel = page.locator("select").filter(has_text=flow).first
             sel.select_option(label=flow)
             time.sleep(2)
@@ -214,8 +241,38 @@ def main():
         print("[3] Aguardando dados iniciais...")
         wait_for_table(page, timeout=15)
 
+        # ── FILTRO: By Sea (40' Containers) ────────────────────────────
+        print("[4] Selecionando filtro 'By Sea (40' Containers)'...")
+        try:
+            sel_transport = page.locator("select").filter(has_text="By Sea").first
+            if sel_transport.count():
+                sel_transport.select_option(label="By Sea (40' Containers)")
+                time.sleep(1.5)
+                print("    ✅ Filtro de transporte OK")
+            else:
+                # Tentar por posição (segundo select na barra de filtros)
+                selects = page.locator("select").all()
+                if len(selects) >= 2:
+                    selects[1].select_option(label="By Sea (40' Containers)")
+                    time.sleep(1.5)
+                    print("    ✅ Filtro de transporte OK (por posição)")
+                else:
+                    print("    ⚠️  Filtro de transporte não encontrado — continuando")
+        except Exception as e:
+            print(f"    ⚠️  Erro ao selecionar transporte: {e}")
+
+        # ── FILTRO: Aba Limes (Tahiti) ─────────────────────────────────
+        print("[5] Selecionando aba 'Limes (Tahiti)'...")
+        try:
+            page.locator("text=Limes (Tahiti)").first.click()
+            time.sleep(2)
+            wait_for_table(page, timeout=10)
+            print("    ✅ Aba Limes (Tahiti) OK")
+        except Exception as e:
+            print(f"    ⚠️  Erro ao selecionar aba Limes (Tahiti): {e}")
+
         # ── EXTRAIR DADOS ──────────────────────────────────────────────
-        print("[4] Extraindo combinações de filtro...")
+        print("[6] Extraindo combinações de filtro...")
         all_data = extract_all(page)
 
         browser.close()
