@@ -933,24 +933,36 @@ async function loadChile() {
   const mercados = [...new Set(data.map(d => d.mercado).filter(Boolean))].sort();
   const anos     = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
   const curAno   = Math.max(...anos);
-  const lastData = data.filter(d => d.ano === curAno);
-  const avgPrice = lastData.reduce((s, d) => s + d.precio, 0) / (lastData.length || 1);
-  const lastSem  = Math.max(...lastData.map(d => d.semana));
-  const prevSem  = data.filter(d => d.ano === curAno && d.semana === lastSem - 1);
-  const avgPrev  = prevSem.reduce((s,d) => s + d.precio, 0) / (prevSem.length || 1);
-  const trend    = avgPrev ? ((avgPrice - avgPrev) / avgPrev) * 100 : null;
 
   // Mercado com mais registros (para selecionar como padrão)
   const contagem = {};
   data.forEach(d => { if (d.mercado) contagem[d.mercado] = (contagem[d.mercado]||0) + 1; });
   const topMercado = Object.entries(contagem).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
 
-  renderKpis('chile-kpis', [
-    { label: 'Preço médio', value: `US$ ${avgPrice.toFixed(2)}`, unit: 'USD/cx 4.5kg', trend },
-    { label: 'Mercados', value: mercados.length, unit: 'monitorados' },
-    { label: 'Registros', value: data.length, unit: 'histórico' },
-    { label: 'Semana atual', value: lastSem, unit: `/${curAno}` },
-  ]);
+  function renderChileKpis(ano) {
+    const anoData  = data.filter(d => d.ano === ano);
+    if (!anoData.length) return;
+    const lastSem  = Math.max(...anoData.map(d => d.semana));
+    // Últimas 4 semanas
+    const ult4     = [lastSem, lastSem-1, lastSem-2, lastSem-3].filter(s => s > 0);
+    const ult4data = anoData.filter(d => ult4.includes(d.semana));
+    const avg4sem  = ult4data.length ? ult4data.reduce((s,d) => s+d.precio, 0) / ult4data.length : 0;
+    // 4 semanas anteriores (trend)
+    const prev4    = [lastSem-4, lastSem-5, lastSem-6, lastSem-7].filter(s => s > 0);
+    const prev4d   = anoData.filter(d => prev4.includes(d.semana));
+    const avgPrev4 = prev4d.length ? prev4d.reduce((s,d) => s+d.precio, 0) / prev4d.length : 0;
+    const trend    = avgPrev4 ? ((avg4sem - avgPrev4) / avgPrev4) * 100 : null;
+    // Média anual
+    const avgAnual = anoData.reduce((s,d) => s+d.precio, 0) / anoData.length;
+    renderKpis('chile-kpis', [
+      { label: 'Preço médio (últ. 4 sem)', value: `US$ ${avg4sem.toFixed(2)}`, unit: 'USD/cx 4,5kg', trend },
+      { label: `Média anual ${ano}`,        value: `US$ ${avgAnual.toFixed(2)}`, unit: 'USD/cx 4,5kg' },
+      { label: 'Mercados',                  value: mercados.length, unit: 'monitorados' },
+      { label: 'Semana atual',              value: lastSem, unit: `/${ano}` },
+    ]);
+  }
+
+  renderChileKpis(curAno);
 
   // ── Histórico comparativo por ano (seleciona top mercado por padrão) ──
   const selMerc = document.getElementById('chile-mercado-select');
@@ -972,6 +984,7 @@ async function loadChile() {
     filterEl.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
     c.classList.add('active');
     activeAno = +c.dataset.ano;
+    renderChileKpis(activeAno);
     drawChileLine(data, top5, activeAno);
   }));
   drawChileLine(data, top5, activeAno);
