@@ -1086,6 +1086,8 @@ async function loadEuropa() {
 
   const anos    = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
   const curAno  = Math.max(...anos);
+  const curData = data.filter(d => d.ano === curAno);
+  const sems    = [...new Set(curData.map(d => d.semana))].sort((a,b) => a-b);
 
   function renderEuropaKpis(ano) {
     const anoData  = data.filter(d => d.ano === ano);
