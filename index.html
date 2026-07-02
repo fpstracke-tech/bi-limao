@@ -309,14 +309,14 @@
       <div class="page-header">
         <div class="page-eyebrow">🇧🇷 Notícias Agrícolas / CEASAs</div>
         <div class="page-title">Preços Brasil</div>
-        <div class="page-sub">Lima Ácida Tahiti — R$/kg por região</div>
+        <div class="page-sub">Lima Ácida Tahiti — R$/cx 4,5kg por região</div>
       </div>
       <div class="kpi-grid" id="brasil-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
       <!-- Histórico comparativo por ano -->
       <div class="card-shell chart-card">
         <div class="card-inner">
           <div class="chart-header">
-            <span class="chart-title">Histórico por Ano — Média semanal R$/kg</span>
+            <span class="chart-title">Histórico por Ano — Média semanal R$/cx 4,5kg</span>
             <select class="styled-select" id="brasil-regiao-select"></select>
           </div>
           <div class="chart-wrap"><canvas id="chartBrasilHistorico"></canvas></div>
@@ -407,7 +407,7 @@
         <div class="card-shell chart-card">
           <div class="card-inner">
             <div class="chart-header">
-              <span class="chart-title">Evolução Semanal</span>
+              <span class="chart-title">Evolução Semanal — €/cx 4,5kg</span>
               <div class="filter-bar" id="europa-filter"></div>
             </div>
             <div class="chart-wrap"><canvas id="chartEuropaLine"></canvas></div>
@@ -610,8 +610,17 @@
   <div class="mb-item" data-page="clima-local">
     <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 0 1 0 9z"/></svg>☁
   </div>
+  <div class="mb-item" data-page="clima-global">
+    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>🌍
+  </div>
   <div class="mb-item" data-page="share">
     <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/></svg>📦
+  </div>
+  <div class="mb-item" data-page="containers">
+    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 17h20M2 12h20M2 7h20"/><rect x="2" y="4" width="20" height="16" rx="1"/></svg>🚢
+  </div>
+  <div class="mb-item" data-page="status">
+    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>⚙
   </div>
 </div>
 
@@ -623,13 +632,25 @@ const SUPA_URL  = 'https://lrxqsrfjisauvdcwaydr.supabase.co';
 const SUPA_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxyeHFzcmZqaXNhdXZkY3dheWRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTg2NDAsImV4cCI6MjA5ODI5NDY0MH0.BvrNvQhAGBji0de7Y5t-EwL1qpbYNDvImYzKmcgd31o';
 
 // ── Câmbio CLP → USD (atualizado na carga, fallback estático) ──
-let CLP_TO_USD = 1 / 970;   // fallback ~970 CLP/USD (jun 2026)
+let CLP_TO_USD   = 1 / 970;  // fallback
+let EUR_TO_BRL   = 6.20;     // fallback
+let CLP_RATE_LIVE = false;
+let USD_CLP_DISPLAY = '970 (est.)';
+let EUR_BRL_DISPLAY = '6,20 (est.)';
 (async () => {
   try {
     const r = await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'default' });
     if (r.ok) {
       const j = await r.json();
-      if (j?.rates?.CLP) CLP_TO_USD = 1 / j.rates.CLP;
+      if (j?.rates?.CLP) {
+        CLP_TO_USD = 1 / j.rates.CLP;
+        USD_CLP_DISPLAY = Math.round(j.rates.CLP).toLocaleString('pt-BR');
+        CLP_RATE_LIVE = true;
+      }
+      if (j?.rates?.BRL && j?.rates?.EUR) {
+        EUR_TO_BRL = j.rates.BRL / j.rates.EUR;
+        EUR_BRL_DISPLAY = `R$ ${EUR_TO_BRL.toFixed(2)}`;
+      }
     }
   } catch (_) { /* usa fallback */ }
 })();
@@ -719,6 +740,14 @@ function barDs(label, data, color) {
 const scalesLine = {
   x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { maxRotation: 45 } },
   y: { grid: { color: 'rgba(255,255,255,.04)' } }
+};
+const scalesBRL = {
+  x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { maxRotation: 45 } },
+  y: { grid: { color: 'rgba(255,255,255,.04)' },
+       ticks: { callback: v => `R$${v.toFixed(2)}` } }
+};
+const tooltipBRL = {
+  callbacks: { label: ctx => ` ${ctx.dataset.label}: R$${(+ctx.raw).toFixed(2)}` }
 };
 
 const scalesUSD = {
@@ -879,7 +908,7 @@ function drawBrasilHistorico(data, anos, regiao) {
   const datasets = anos.map((ano, i) =>
     lineDs(String(ano), semanas.map(s => {
       const rows = filtered.filter(d => d.ano === ano && d.semana === s);
-      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_kg,0)/rows.length).toFixed(3) : null;
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null;
     }), PALETTE[i % PALETTE.length])
   );
 
@@ -887,7 +916,7 @@ function drawBrasilHistorico(data, anos, regiao) {
   const curAno = Math.max(...anos);
   const curSeries = semanas.map((s, i) => {
     const rows = filtered.filter(d => d.ano === curAno && d.semana === s);
-    return { x: i, y: rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_kg,0)/rows.length).toFixed(3) : null };
+    return { x: i, y: rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null };
   });
   const pred = predictLinear(curSeries, 4, 12);
   const predLabels = Array.from({length:4}, (_,i) => `→S${semanas.at(-1)+i+1}`);
@@ -897,9 +926,9 @@ function drawBrasilHistorico(data, anos, regiao) {
     type: 'line',
     data: { labels: [...semanas.map(s=>`S${s}`), ...predLabels], datasets },
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'},
-        tooltip:{callbacks:{footer: items => items.some(i=>i.dataset.label?.startsWith('Tendência')) ? '⚠ Estimativa — uso indicativo' : ''}}},
-      scales:scalesLine, spanGaps:true }
+      plugins:{legend:{position:'bottom'}, tooltip:{...tooltipBRL, callbacks:{...tooltipBRL.callbacks,
+        footer: items => items.some(i=>i.dataset.label?.startsWith('Tendência')) ? '⚠ Estimativa — uso indicativo' : ''}}},
+      scales:scalesBRL, spanGaps:true }
   });
 }
 
@@ -911,15 +940,16 @@ function drawBrasilUlt4sem(data, regioes, curAno) {
   const datasets = regioes.map((reg, i) =>
     barDs(reg, semanas.map(s => {
       const rows = curData.filter(d => d.semana === s && d.regiao === reg);
-      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_kg,0)/rows.length).toFixed(2) : 0;
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(2) : 0;
     }), PALETTE[i % PALETTE.length])
   );
   mkChart('chartBrasilUlt4sem', {
     type: 'bar',
     data: { labels, datasets },
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'}},
-      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+      plugins:{legend:{position:'bottom'}, tooltip: tooltipBRL},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
+        ticks:{callback: v=>`R$${v.toFixed(2)}`}} } }
   });
 }
 
@@ -929,14 +959,14 @@ function drawBrasil(data, regioes, ano) {
   const datasets = regioes.map((reg, i) =>
     lineDs(reg, semanas.map(s => {
       const rows = filtered.filter(d => d.semana === s && d.regiao === reg);
-      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_kg,0)/rows.length).toFixed(3) : null;
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null;
     }), PALETTE[i % PALETTE.length])
   );
   mkChart('chartBrasil', {
     type: 'line',
     data: { labels: semanas.map(s=>`S${s}`), datasets },
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'}}, scales:scalesLine }
+      plugins:{legend:{position:'bottom'}, tooltip: tooltipBRL}, scales:scalesBRL }
   });
 }
 
@@ -983,6 +1013,7 @@ async function loadChile() {
       { label: `Média anual ${ano}`,        value: `US$ ${avgAnual.toFixed(2)}`, unit: 'USD/cx 4,5kg' },
       { label: 'Mercados',                  value: mercados.length, unit: 'monitorados' },
       { label: 'Semana atual',              value: lastSem, unit: `/${ano}` },
+      { label: 'Câmbio do dia',             value: `${USD_CLP_DISPLAY}`, unit: 'CLP por 1 USD' },
     ]);
   }
 
@@ -1121,6 +1152,7 @@ async function loadEuropa() {
       { label: `Média anual ${ano}`,        value: `€ ${avgAnual.toFixed(2)}`, unit: '€/cx 4,5kg' },
       { label: 'Anos histórico',            value: anos.length, unit: 'anos' },
       { label: 'Semana atual',              value: lastSem, unit: `/${ano}` },
+      { label: 'Câmbio do dia',             value: EUR_BRL_DISPLAY, unit: '1 EUR em BRL' },
     ]);
   }
 
@@ -1462,7 +1494,7 @@ async function loadShare() {
   const totalKg  = data.filter(d=>d.ano===curAno).reduce((s,d)=>s+ +d.kg_liquido,0);
   const totalCont = kgToCont(totalKg);
   const totalUSD = data.filter(d=>d.ano===curAno).reduce((s,d)=>s+ +d.valor_usd,0);
-  const paises   = [...new Set(data.map(d=>d.pais))].length;
+  const paises   = [...new Set(data.filter(d=>d.ano===curAno).map(d=>d.pais))].length;
 
   renderKpis('share-kpis', [
     { label: `Containers exportados ${curAno}`, value: totalCont.toLocaleString('pt-BR'), unit: 'cont. 40\' (23.760 kg)' },
