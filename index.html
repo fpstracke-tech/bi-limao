@@ -518,7 +518,7 @@
         </div>
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Exportações mensais (kg)</span>
+            <div class="chart-header"><span class="chart-title">Exportações mensais (containers)</span>
               <select class="styled-select" id="share-ano-select"></select>
             </div>
             <div class="chart-wrap"><canvas id="chartShareLine"></canvas></div>
@@ -1442,27 +1442,32 @@ async function loadShare() {
     order:'ano.asc,mes.asc', limit:5000
   });
 
+  const KG_PER_CONT = 23760;
+  const kgToCont = kg => Math.ceil(kg / KG_PER_CONT);
+
   const anos   = [...new Set(data.map(d=>d.ano))].sort((a,b)=>b-a);
   const curAno = anos[0];
   const totalKg  = data.filter(d=>d.ano===curAno).reduce((s,d)=>s+ +d.kg_liquido,0);
+  const totalCont = kgToCont(totalKg);
   const totalUSD = data.filter(d=>d.ano===curAno).reduce((s,d)=>s+ +d.valor_usd,0);
   const paises   = [...new Set(data.map(d=>d.pais))].length;
 
   renderKpis('share-kpis', [
-    { label: `Kg exportados ${curAno}`, value: (totalKg/1e6).toFixed(1)+'M', unit: 'kg líquido' },
+    { label: `Containers exportados ${curAno}`, value: totalCont.toLocaleString('pt-BR'), unit: 'cont. 40\' (23.760 kg)' },
     { label: `USD FOB ${curAno}`, value: '$'+(totalUSD/1e6).toFixed(1)+'M', unit: 'valor FOB' },
     { label: 'Países destino', value: paises, unit: 'histórico' },
     { label: 'NCM', value: '08055000', unit: 'Limão Tahiti' },
   ]);
 
-  // Bar — top 10 por kg
+  // Bar — top 10 por containers
   const byPais = {};
   data.filter(d=>d.ano===curAno).forEach(d=>{ byPais[d.pais]=(byPais[d.pais]||0)+ +d.kg_liquido; });
   const top10 = Object.entries(byPais).sort((a,b)=>b[1]-a[1]).slice(0,10);
   mkChart('chartShareBar', {
     type:'bar',
-    data:{ labels:top10.map(([p])=>p), datasets:[barDs('kg líquido', top10.map(([,v])=>v), PALETTE[0])] },
-    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'}},y:{grid:{display:false}}}}
+    data:{ labels:top10.map(([p])=>p), datasets:[barDs('Containers', top10.map(([,v])=>kgToCont(v)), PALETTE[0])] },
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{callback:v=>v.toLocaleString('pt-BR')}},y:{grid:{display:false}}}}
   });
 
   // Line + Ano select
@@ -1472,11 +1477,13 @@ async function loadShare() {
   function drawShareLine(ano) {
     const meses = [1,2,3,4,5,6,7,8,9,10,11,12];
     const MESES_LABEL = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-    const vals = meses.map(m=>data.filter(d=>d.ano===+ano&&d.mes===m).reduce((s,d)=>s+ +d.kg_liquido,0));
+    const vals = meses.map(m=>kgToCont(data.filter(d=>d.ano===+ano&&d.mes===m).reduce((s,d)=>s+ +d.kg_liquido,0)));
     mkChart('chartShareLine', {
       type:'line',
-      data:{ labels:MESES_LABEL, datasets:[lineDs('kg líquido', vals, PALETTE[2], true)] },
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:scalesLine}
+      data:{ labels:MESES_LABEL, datasets:[lineDs('Containers', vals, PALETTE[2], true)] },
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+        scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxRotation:0}},
+                y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}
     });
   }
   const selSort = document.getElementById('share-table-sort');
@@ -1492,8 +1499,8 @@ async function loadShare() {
     const t = document.getElementById('share-table');
     t.querySelector('thead').innerHTML = `<tr><th>País</th>${meses.map(m=>`<th>${ML[m-1]}</th>`).join('')}<th>Total</th></tr>`;
     t.querySelector('tbody').innerHTML = paisTotais.map(({p, tot})=>{
-      const row = meses.map(m=>{ const r=data.find(d=>d.ano===+ano&&d.mes===m&&d.pais===p); return r?Math.round(+r.kg_liquido/1000)+'t':'—'; });
-      return `<tr><td>${p}</td>${row.map(v=>`<td>${v}</td>`).join('')}<td><span class="badge">${Math.round(tot/1000)}t</span></td></tr>`;
+      const row = meses.map(m=>{ const r=data.find(d=>d.ano===+ano&&d.mes===m&&d.pais===p); return r?kgToCont(+r.kg_liquido):'—'; });
+      return `<tr><td>${p}</td>${row.map(v=>`<td>${v}</td>`).join('')}<td><span class="badge">${kgToCont(tot)}</span></td></tr>`;
     }).join('');
   }
   selAno.addEventListener('change', ()=>drawShareLine(selAno.value));
