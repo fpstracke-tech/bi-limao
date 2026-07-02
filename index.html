@@ -809,20 +809,31 @@ async function loadBrasil() {
   const regioes = [...new Set(data.map(d => d.regiao))].sort();
   const anos    = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
   const curAno  = Math.max(...anos);
-  const lastData = data.filter(d => d.ano === curAno);
-  const lastDate = [...new Set(lastData.map(d => d.data))].sort().at(-1);
-  const lastDay  = lastData.filter(d => d.data === lastDate);
-  const avgLast  = lastDay.reduce((s,d) => s + d.preco_kg, 0) / (lastDay.length || 1);
-  const dates    = [...new Set(lastData.map(d => d.data))].sort();
-  const avgPrev  = (() => { const p = lastData.filter(d => d.data === dates[dates.length-2]); return p.length ? p.reduce((s,d)=>s+d.preco_kg,0)/p.length : 0; })();
-  const trend    = avgPrev ? ((avgLast - avgPrev) / avgPrev) * 100 : null;
 
-  renderKpis('brasil-kpis', [
-    { label: 'Última atualização', value: lastDate ? lastDate.slice(5) : '—', unit: lastDate ? lastDate.slice(0,4) : '' },
-    { label: 'Preço médio', value: `R$ ${avgLast.toFixed(2)}`, unit: 'R$/kg · CEASAs', trend },
-    { label: 'CEASAs', value: regioes.length, unit: 'monitoradas' },
-    { label: 'Registros', value: data.length, unit: 'histórico' },
-  ]);
+  function renderBrasilKpis(ano) {
+    const anoData  = data.filter(d => d.ano === ano);
+    if (!anoData.length) return;
+    const lastSem  = Math.max(...anoData.map(d => d.semana));
+    // Últimas 4 semanas
+    const ult4     = [lastSem, lastSem-1, lastSem-2, lastSem-3].filter(s => s > 0);
+    const ult4data = anoData.filter(d => ult4.includes(d.semana));
+    const avg4sem  = ult4data.length ? ult4data.reduce((s,d) => s+d.preco_4_5kg, 0) / ult4data.length : 0;
+    // 4 semanas anteriores (trend)
+    const prev4    = [lastSem-4, lastSem-5, lastSem-6, lastSem-7].filter(s => s > 0);
+    const prev4d   = anoData.filter(d => prev4.includes(d.semana));
+    const avgPrev4 = prev4d.length ? prev4d.reduce((s,d) => s+d.preco_4_5kg, 0) / prev4d.length : 0;
+    const trend    = avgPrev4 ? ((avg4sem - avgPrev4) / avgPrev4) * 100 : null;
+    // Média anual
+    const avgAnual = anoData.reduce((s,d) => s+d.preco_4_5kg, 0) / anoData.length;
+    renderKpis('brasil-kpis', [
+      { label: 'Preço médio (últ. 4 sem)', value: `R$ ${avg4sem.toFixed(2)}`,  unit: 'R$/cx 4,5kg', trend },
+      { label: `Média anual ${ano}`,        value: `R$ ${avgAnual.toFixed(2)}`, unit: 'R$/cx 4,5kg' },
+      { label: 'CEASAs',                    value: regioes.length, unit: 'monitoradas' },
+      { label: 'Semana atual',              value: lastSem, unit: `/${ano}` },
+    ]);
+  }
+
+  renderBrasilKpis(curAno);
 
   // ── SELECT de região para histórico ──
   const selReg = document.getElementById('brasil-regiao-select');
@@ -842,6 +853,7 @@ async function loadBrasil() {
     filterEl.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
     c.classList.add('active');
     activeAno = +c.dataset.ano;
+    renderBrasilKpis(activeAno);
     drawBrasil(data, regioes, activeAno);
   }));
   drawBrasil(data, regioes, activeAno);
@@ -1074,21 +1086,31 @@ async function loadEuropa() {
 
   const anos    = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
   const curAno  = Math.max(...anos);
-  const curData = data.filter(d => d.ano === curAno);
-  const sems    = [...new Set(curData.map(d => d.semana))].sort((a,b) => a-b);
-  const lastSem = sems.at(-1);
-  const lastData = curData.filter(d => d.semana === lastSem);
-  const avgLast  = lastData.reduce((s,d) => s + d.preco_4_5kg, 0) / (lastData.length || 1);
-  const prevSem  = sems.at(-2);
-  const avgPrev  = prevSem ? (() => { const p = curData.filter(d=>d.semana===prevSem); return p.reduce((s,d)=>s+d.preco_4_5kg,0)/(p.length||1); })() : 0;
-  const trend    = avgPrev ? ((avgLast - avgPrev) / avgPrev) * 100 : null;
 
-  renderKpis('europa-kpis', [
-    { label: `Sem ${lastSem}/${curAno}`, value: `€ ${avgLast.toFixed(2)}`, unit: 'cx 4,5 kg', trend },
-    { label: 'Anos histórico', value: anos.length, unit: 'anos' },
-    { label: 'Registros', value: data.length, unit: 'semanas' },
-    { label: 'Fonte', value: 'FranceAgriMer', unit: 'marítimo' },
-  ]);
+  function renderEuropaKpis(ano) {
+    const anoData  = data.filter(d => d.ano === ano);
+    if (!anoData.length) return;
+    const lastSem  = Math.max(...anoData.map(d => d.semana));
+    // Últimas 4 semanas
+    const ult4     = [lastSem, lastSem-1, lastSem-2, lastSem-3].filter(s => s > 0);
+    const ult4data = anoData.filter(d => ult4.includes(d.semana));
+    const avg4sem  = ult4data.length ? ult4data.reduce((s,d) => s+d.preco_4_5kg, 0) / ult4data.length : 0;
+    // 4 semanas anteriores (trend)
+    const prev4    = [lastSem-4, lastSem-5, lastSem-6, lastSem-7].filter(s => s > 0);
+    const prev4d   = anoData.filter(d => prev4.includes(d.semana));
+    const avgPrev4 = prev4d.length ? prev4d.reduce((s,d) => s+d.preco_4_5kg, 0) / prev4d.length : 0;
+    const trend    = avgPrev4 ? ((avg4sem - avgPrev4) / avgPrev4) * 100 : null;
+    // Média anual
+    const avgAnual = anoData.reduce((s,d) => s+d.preco_4_5kg, 0) / anoData.length;
+    renderKpis('europa-kpis', [
+      { label: 'Preço médio (últ. 4 sem)', value: `€ ${avg4sem.toFixed(2)}`,  unit: '€/cx 4,5kg', trend },
+      { label: `Média anual ${ano}`,        value: `€ ${avgAnual.toFixed(2)}`, unit: '€/cx 4,5kg' },
+      { label: 'Anos histórico',            value: anos.length, unit: 'anos' },
+      { label: 'Semana atual',              value: lastSem, unit: `/${ano}` },
+    ]);
+  }
+
+  renderEuropaKpis(curAno);
 
   // ── Histórico por ano (uma linha por ano)
   const todasSemanas = [...new Set(data.map(d => d.semana))].sort((a,b) => a-b);
@@ -1142,6 +1164,7 @@ async function loadEuropa() {
     filterElEu.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
     c.classList.add('active');
     activeAnoEu = +c.dataset.ano;
+    renderEuropaKpis(activeAnoEu);
     drawEuropaLine(data, activeAnoEu);
   }));
   drawEuropaLine(data, curAno);
