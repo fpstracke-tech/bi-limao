@@ -1250,11 +1250,18 @@ function drawClimaFc(forecast, cidade) {
     type: 'bar',
     data: { labels, datasets: [
       barDs('Temp Máx °C', fc.map(f=>f.temp_max), PALETTE[0]),
-      lineDs('Chuva mm', fc.map(f=>+f.chuva_mm), PALETTE[6]),
+      { ...barDs('Chuva mm', fc.map(f=>+f.chuva_mm), '#38BDF8'), yAxisID: 'y1',
+        backgroundColor: 'rgba(56,189,248,0.7)', borderColor: '#38BDF8', borderWidth: 1 },
     ]},
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
       plugins:{legend:{position:'bottom'}},
-      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+      scales:{
+        x:  { grid:{display:false} },
+        y:  { grid:{color:'rgba(255,255,255,.04)'}, position:'left',
+              ticks:{callback: v=>`${v}°C`} },
+        y1: { position:'right', grid:{display:false},
+              ticks:{callback: v=>`${v}mm`}, suggestedMin:0 }
+      } }
   });
 }
 
@@ -1353,11 +1360,18 @@ async function loadClimaGlobal() {
       type: 'bar',
       data: { labels, datasets: [
         barDs('Temp Máx °C', days.map(d => byDay[d].tempMax), PALETTE[0]),
-        lineDs('Chuva mm', days.map(d => byDay[d].chuva.toFixed(1)), PALETTE[6]),
+        { ...barDs('Chuva mm', days.map(d => byDay[d].chuva.toFixed(1)), '#38BDF8'), yAxisID: 'y1',
+          backgroundColor: 'rgba(56,189,248,0.7)', borderColor: '#38BDF8', borderWidth: 1 },
       ]},
       options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
         plugins:{legend:{position:'bottom'}},
-        scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+        scales:{
+          x:  { grid:{display:false} },
+          y:  { grid:{color:'rgba(255,255,255,.04)'}, position:'left',
+                ticks:{callback: v=>`${v}°C`} },
+          y1: { position:'right', grid:{display:false},
+                ticks:{callback: v=>`${v}mm`}, suggestedMin:0 }
+        } }
     });
   }
 
