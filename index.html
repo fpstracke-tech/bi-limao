@@ -577,9 +577,18 @@
           <div class="chart-wrap"><canvas id="chartCont"></canvas></div>
         </div>
       </div>
-      <div class="card-shell" style="margin-top:1rem">
-        <div class="card-inner">
-          <div class="table-wrap"><table id="cont-table"><thead></thead><tbody></tbody></table></div>
+      <div class="two-col" style="margin-top:1rem">
+        <div class="card-shell">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">🚢 Shipped — Brasil</span></div>
+            <div class="table-wrap"><table id="cont-table-shipped"><thead></thead><tbody></tbody></table></div>
+          </div>
+        </div>
+        <div class="card-shell">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">⚓ Arrivals — Europa</span></div>
+            <div class="table-wrap"><table id="cont-table-arrivals"><thead></thead><tbody></tbody></table></div>
+          </div>
         </div>
       </div>
     </section>
@@ -1575,23 +1584,50 @@ async function loadContainers() {
   const selAno = document.getElementById('cont-ano-select');
   selAno.innerHTML = [...anos].reverse().map(a=>`<option value="${a}" ${a===curAno?'selected':''}>${a}</option>`).join('');
 
+  const TRANSIT_WEEKS = 3; // semanas de trânsito Brasil → Europa
+
   function drawCont(ano) {
     const semanas   = [...new Set(data.filter(d=>d.year===+ano).map(d=>d.week))].sort((a,b)=>a-b);
     const shippedD  = semanas.map(w=>{ const r=shipped.find(d=>d.year===+ano&&d.week===w); return r?r.total_containers:null; });
     const arrivalsD = semanas.map(w=>{ const r=arrivals.find(d=>d.year===+ano&&d.week===w); return r?r.total_containers:null; });
+
     mkChart('chartCont', {
       type:'bar',
       data:{ labels:semanas.map(s=>`S${s}`), datasets:[barDs('Shipped',shippedD,PALETTE[0]),barDs('Arrivals',arrivalsD,PALETTE[1])] },
       options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
         plugins:{legend:{position:'bottom'}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,.04)'}}}}
     });
-    const t = document.getElementById('cont-table');
-    t.querySelector('thead').innerHTML = `<tr><th>Semana</th><th>Shipped</th><th>Arrivals</th><th>Saldo</th></tr>`;
-    t.querySelector('tbody').innerHTML = [...semanas].map(w=>{
-      const sv=shippedD[semanas.indexOf(w)]||0, av=arrivalsD[semanas.indexOf(w)]||0;
-      const diff=sv-av;
-      return `<tr><td>S${w}/${ano}</td><td>${sv||'—'}</td><td>${av||'—'}</td>
-        <td style="color:${diff>=0?'var(--green)':'#EF5350'}">${diff>0?'+':''}${diff}</td></tr>`;
+
+    // ── Tabela Shipped ──────────────────────────────────────────
+    const ts = document.getElementById('cont-table-shipped');
+    ts.querySelector('thead').innerHTML = `<tr><th>Semana</th><th>Shipped</th><th>Prev. chegada</th></tr>`;
+    ts.querySelector('tbody').innerHTML = semanas.map(w => {
+      const sv = shippedD[semanas.indexOf(w)];
+      const chegada = `S${w + TRANSIT_WEEKS}/${ano}`;
+      return `<tr>
+        <td>S${w}/${ano}</td>
+        <td>${sv != null ? sv : '—'}</td>
+        <td style="color:var(--text-3);font-size:.8rem">${sv != null ? chegada : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    // ── Tabela Arrivals ─────────────────────────────────────────
+    const ta = document.getElementById('cont-table-arrivals');
+    ta.querySelector('thead').innerHTML = `<tr><th>Semana</th><th>Arrivals</th><th>Embarcado S-${TRANSIT_WEEKS}</th><th>Δ</th></tr>`;
+    ta.querySelector('tbody').innerHTML = semanas.map(w => {
+      const av  = arrivalsD[semanas.indexOf(w)];
+      const refW = w - TRANSIT_WEEKS;
+      const sv  = shipped.find(d=>d.year===+ano&&d.week===refW)?.total_containers ?? null;
+      const delta = (av != null && sv != null) ? av - sv : null;
+      const deltaStr = delta != null
+        ? `<span style="color:${delta>=0?'var(--green)':'#EF5350'}">${delta>0?'+':''}${delta}</span>`
+        : '—';
+      return `<tr>
+        <td>S${w}/${ano}</td>
+        <td>${av != null ? av : '—'}</td>
+        <td style="color:var(--text-3)">${sv != null ? `${sv} <span style="font-size:.7rem">(S${refW})</span>` : '—'}</td>
+        <td>${deltaStr}</td>
+      </tr>`;
     }).join('');
   }
   selAno.addEventListener('change', () => {
