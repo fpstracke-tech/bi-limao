@@ -928,7 +928,7 @@ async function loadChile() {
   if (!data.length) { pageError('chile-kpis', 'Sem dados'); return; }
 
   // Normaliza tipos + converte CLP → USD
-  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +(+d.precio * CLP_TO_USD).toFixed(4); });
+  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +(+d.precio * 4.5 * CLP_TO_USD).toFixed(4); }); // CLP/kg → USD/cx 4.5kg
 
   const mercados = [...new Set(data.map(d => d.mercado).filter(Boolean))].sort();
   const anos     = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
@@ -946,7 +946,7 @@ async function loadChile() {
   const topMercado = Object.entries(contagem).sort((a,b) => b[1]-a[1])[0]?.[0] || '';
 
   renderKpis('chile-kpis', [
-    { label: 'Preço médio', value: `US$ ${avgPrice.toFixed(2)}`, unit: 'USD/kg', trend },
+    { label: 'Preço médio', value: `US$ ${avgPrice.toFixed(2)}`, unit: 'USD/cx 4.5kg', trend },
     { label: 'Mercados', value: mercados.length, unit: 'monitorados' },
     { label: 'Registros', value: data.length, unit: 'histórico' },
     { label: 'Semana atual', value: lastSem, unit: `/${curAno}` },
