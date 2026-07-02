@@ -144,6 +144,17 @@ def transform(df: pd.DataFrame, extracted_at: str) -> list[dict]:
 
     print(f"    Mapeamento: fecha={col_fecha}, precio={col_precio}, mercado={col_mercado}, unidad={col_unidad}")
 
+    # Filtrar apenas unidade "$/malla 18 kilos"
+    if col_unidad:
+        df_limon = df_limon[df_limon[col_unidad].astype(str).str.strip() == "$/malla 18 kilos"].copy()
+        print(f"    Após filtro '$/malla 18 kilos': {len(df_limon)} registros")
+        if len(df_limon) == 0:
+            unidades_disp = df[col_unidad].astype(str).unique()[:20]
+            print(f"    Unidades disponíveis: {unidades_disp}")
+            return []
+    else:
+        print("    ⚠️  Coluna 'Unidad de comercialización' não encontrada — filtro ignorado")
+
     if col_fecha:
         df_limon = df_limon.copy()
         df_limon[col_fecha] = pd.to_datetime(df_limon[col_fecha], errors="coerce")
