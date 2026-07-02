@@ -191,6 +191,10 @@
   .cidade-desc { font-size: .7rem; color: var(--text-2); }
   .cidade-extra { display: flex; gap: .8rem; margin-top: .4rem; }
   .cidade-extra span { font-size: .65rem; color: var(--text-3); }
+  .rain-badge { display:inline-block; margin-top:.4rem; padding:.2rem .5rem; border-radius:4px; font-size:.65rem; font-weight:600; }
+  .rain-badge.warn   { background:rgba(245,131,78,.15); color:#F5834E; border:1px solid rgba(245,131,78,.4); }
+  .rain-badge.critic { background:rgba(239,83,80,.15);  color:#EF5350; border:1px solid rgba(239,83,80,.4); animation: pulse-rain 1.5s ease-in-out infinite; }
+  @keyframes pulse-rain { 0%,100%{opacity:1} 50%{opacity:.6} }
 
   /* ── MOBILE NAV ──────────────────────────────────────────────── */
   .mobile-bar {
@@ -1231,6 +1235,27 @@ function drawEuropaLine(data, ano) {
   });
 }
 
+// ── HELPERS CHUVA ────────────────────────────────────────────
+const RAIN_WARN   = 50;   // mm acumulado 7 dias
+const RAIN_CRITIC = 100;  // mm acumulado 7 dias
+const RAIN_DAY_WARN   = 20; // mm em um único dia
+const RAIN_DAY_CRITIC = 40; // mm em um único dia
+
+function rainAlert(totalMm, maxDayMm) {
+  if (totalMm >= RAIN_CRITIC || maxDayMm >= RAIN_DAY_CRITIC)
+    return { level: 'critic', html: `<span class="rain-badge critic">🚨 ${Math.round(totalMm)}mm/7d · pico ${Math.round(maxDayMm)}mm</span>` };
+  if (totalMm >= RAIN_WARN || maxDayMm >= RAIN_DAY_WARN)
+    return { level: 'warn', html: `<span class="rain-badge warn">⚠ ${Math.round(totalMm)}mm/7d · pico ${Math.round(maxDayMm)}mm</span>` };
+  return null;
+}
+
+function getFcRain(forecast, cidade, extractedAt) {
+  const fc = forecast.filter(f => f.cidade === cidade && f.extracted_at === extractedAt).slice(0, 7);
+  const total  = fc.reduce((s, f) => s + (+f.chuva_mm || 0), 0);
+  const maxDay = Math.max(0, ...fc.map(f => +f.chuva_mm || 0));
+  return { total, maxDay };
+}
+
 // ═══════════════════════════════════════════════════════════════
 // ── CLIMA LOCAL ──────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════
@@ -1244,12 +1269,20 @@ async function loadClimaLocal() {
   const seen = {}; const latest = [];
   for (const r of atual) { if (!seen[r.cidade]) { seen[r.cidade]=true; latest.push(r); } }
 
+  // Pre-calcular extracted_at mais recente por cidade no forecast
+  const maxExtByCity = {};
+  forecast.forEach(f => { if (!maxExtByCity[f.cidade] || f.extracted_at > maxExtByCity[f.cidade]) maxExtByCity[f.cidade] = f.extracted_at; });
+
   const container = document.getElementById('clima-cards');
   container.innerHTML = '';
   latest.forEach((c, i) => {
+    const { total, maxDay } = getFcRain(forecast, c.cidade, maxExtByCity[c.cidade] || '');
+    const alerta = rainAlert(total, maxDay);
     const div = document.createElement('div');
     div.className = 'card-shell cidade-card';
     div.style.animationDelay = `${i * .07}s`;
+    if (alerta?.level === 'critic') div.style.borderColor = 'rgba(239,83,80,.5)';
+    else if (alerta?.level === 'warn') div.style.borderColor = 'rgba(245,131,78,.4)';
     div.innerHTML = `<div class="card-inner">
       <div class="cidade-nome">${c.cidade}</div>
       <div class="cidade-temp">${c.temp_c}°</div>
@@ -1259,6 +1292,7 @@ async function loadClimaLocal() {
         <span>🌧 ${c.chuva_mm || 0}mm</span>
         <span>💨 ${c.vento_kmh || '—'}</span>
       </div>
+      ${alerta ? alerta.html : ''}
     </div>`;
     container.appendChild(div);
   });
@@ -1295,7 +1329,9 @@ function drawClimaFc(forecast, cidade) {
     data: { labels, datasets: [
       barDs('Temp Máx °C', fc.map(f=>f.temp_max), PALETTE[0]),
       { ...barDs('Chuva mm', fc.map(f=>+f.chuva_mm), '#38BDF8'), yAxisID: 'y1',
-        backgroundColor: 'rgba(56,189,248,0.7)', borderColor: '#38BDF8', borderWidth: 1 },
+        backgroundColor: fc.map(f => +f.chuva_mm >= RAIN_DAY_CRITIC ? 'rgba(239,83,80,0.8)' : +f.chuva_mm >= RAIN_DAY_WARN ? 'rgba(245,131,78,0.8)' : 'rgba(56,189,248,0.7)'),
+        borderColor: fc.map(f => +f.chuva_mm >= RAIN_DAY_CRITIC ? '#EF5350' : +f.chuva_mm >= RAIN_DAY_WARN ? '#F5834E' : '#38BDF8'),
+        borderWidth: 1 },
     ]},
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
       plugins:{legend:{position:'bottom'}},
@@ -1357,13 +1393,35 @@ async function loadClimaGlobal() {
     if (!seenCity[key]) { seenCity[key] = true; latest.push(r); }
   }
 
+  // Pre-calcular chuva acumulada 7 dias por cidade (global)
+  const rainByCidade = {};
+  cidades_keys_tmp: {
+    const keys = [...new Set(data.map(d=>`${d.cidade}|${d.pais}`))];
+    keys.forEach(key => {
+      const [cidade, pais] = key.split('|');
+      const fc = data.filter(d => d.cidade === cidade && d.pais === pais);
+      // agrupa por dia e acumula chuva
+      const byDay = {};
+      fc.forEach(f => { const d = f.data_hora.slice(0,10); byDay[d] = (byDay[d]||0) + (+f.chuva_mm||0); });
+      const days = Object.keys(byDay).sort().slice(0,7);
+      const total = days.reduce((s,d) => s + byDay[d], 0);
+      const maxDay = Math.max(0, ...days.map(d => byDay[d]));
+      rainByCidade[key] = { total, maxDay };
+    });
+  }
+
   // Cards de cidade (igual ao Local)
   const container = document.getElementById('clima-global-cards');
   container.innerHTML = '';
   latest.forEach((c, i) => {
+    const key = `${c.cidade}|${c.pais}`;
+    const { total, maxDay } = rainByCidade[key] || { total: 0, maxDay: 0 };
+    const alerta = rainAlert(total, maxDay);
     const div = document.createElement('div');
     div.className = 'card-shell cidade-card';
     div.style.animationDelay = `${i * .06}s`;
+    if (alerta?.level === 'critic') div.style.borderColor = 'rgba(239,83,80,.5)';
+    else if (alerta?.level === 'warn') div.style.borderColor = 'rgba(245,131,78,.4)';
     div.innerHTML = `<div class="card-inner">
       <div class="cidade-nome">${c.cidade} <span style="font-size:.6rem;color:var(--text-3)">${c.pais}</span></div>
       <div class="cidade-temp">${c.temp_c}°</div>
@@ -1373,6 +1431,7 @@ async function loadClimaGlobal() {
         <span>🌧 ${(+c.chuva_mm || 0).toFixed(1)}mm</span>
         <span>↑${c.temp_max}° ↓${c.temp_min}°</span>
       </div>
+      ${alerta ? alerta.html : ''}
     </div>`;
     container.appendChild(div);
   });
@@ -1405,7 +1464,9 @@ async function loadClimaGlobal() {
       data: { labels, datasets: [
         barDs('Temp Máx °C', days.map(d => byDay[d].tempMax), PALETTE[0]),
         { ...barDs('Chuva mm', days.map(d => byDay[d].chuva.toFixed(1)), '#38BDF8'), yAxisID: 'y1',
-          backgroundColor: 'rgba(56,189,248,0.7)', borderColor: '#38BDF8', borderWidth: 1 },
+          backgroundColor: days.map(d => byDay[d].chuva >= RAIN_DAY_CRITIC ? 'rgba(239,83,80,0.8)' : byDay[d].chuva >= RAIN_DAY_WARN ? 'rgba(245,131,78,0.8)' : 'rgba(56,189,248,0.7)'),
+          borderColor: days.map(d => byDay[d].chuva >= RAIN_DAY_CRITIC ? '#EF5350' : byDay[d].chuva >= RAIN_DAY_WARN ? '#F5834E' : '#38BDF8'),
+          borderWidth: 1 },
       ]},
       options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
         plugins:{legend:{position:'bottom'}},
