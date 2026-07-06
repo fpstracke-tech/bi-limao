@@ -16,6 +16,7 @@ Saída:
 import os
 import io
 import csv
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -53,10 +54,29 @@ BROWSER_HEADERS = {
 }
 
 
-def baixar_arquivo(url: str, destino: str = None) -> bytes:
-    """Baixa o CSV e salva localmente se destino fornecido. Retorna bytes."""
-    resp = requests.get(url, headers=BROWSER_HEADERS, stream=True, timeout=60)
-    resp.raise_for_status()
+def baixar_arquivo(url: str, destino: str = None, tentativas: int = 4) -> bytes:
+    """Baixa o CSV e salva localmente se destino fornecido. Retorna bytes.
+
+    Faz retry com backoff em caso de timeout/erro de conexão — o servidor da
+    ODEPA (datos.odepa.gob.cl) esporadicamente recusa/demora a conexão vindo
+    de IPs de datacenter (ex.: runners do GitHub Actions).
+    """
+    ultimo_erro = None
+    for tentativa in range(1, tentativas + 1):
+        try:
+            resp = requests.get(url, headers=BROWSER_HEADERS, stream=True, timeout=90)
+            resp.raise_for_status()
+            break
+        except (requests.exceptions.ConnectTimeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ReadTimeout) as e:
+            ultimo_erro = e
+            if tentativa == tentativas:
+                raise
+            espera = 20 * tentativa  # 20s, 40s, 60s...
+            print(f"    ⚠️  Tentativa {tentativa}/{tentativas} falhou ({type(e).__name__}). "
+                  f"Retentando em {espera}s...")
+            time.sleep(espera)
     total = int(resp.headers.get("content-length", 0))
 
     chunks = []
