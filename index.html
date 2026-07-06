@@ -37,6 +37,7 @@
     --ease-spring:  cubic-bezier(0.32, 0.72, 0, 1);
   }
 
+  html { font-size: 90%; } /* visual compacto (equivalente a zoom 90%) sem usar CSS zoom — zoom quebra clique de legenda no Chart.js */
   html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); overflow-x: hidden; }
 
   /* ── SCROLLBAR ───────────────────────────────────────────────── */
@@ -49,7 +50,7 @@
 
   /* ── SIDEBAR ─────────────────────────────────────────────────── */
   .sidebar {
-    width: 220px; min-width: 220px;
+    width: 198px; min-width: 198px;
     background: var(--bg2);
     border-right: 1px solid var(--border);
     display: flex; flex-direction: column;
@@ -64,10 +65,10 @@
     padding: .6rem .75rem 1.5rem;
   }
   .logo-dot {
-    width: 28px; height: 28px; border-radius: 8px;
+    width: 25px; height: 25px; border-radius: 8px;
     background: var(--green);
     display: flex; align-items: center; justify-content: center;
-    font-size: 14px; font-weight: 700; color: #0A0D0A;
+    font-size: 13px; font-weight: 700; color: #0A0D0A;
     flex-shrink: 0;
   }
   .logo-text { font-size: .8rem; font-weight: 700; letter-spacing: .05em; color: var(--text); line-height: 1.2; }
@@ -84,7 +85,7 @@
   }
   .nav-item:hover { background: var(--green-dim); color: var(--green-light); }
   .nav-item.active { background: var(--green-dim); color: var(--green); border: 1px solid var(--green-border); }
-  .nav-icon { width: 16px; height: 16px; opacity: .7; flex-shrink: 0; }
+  .nav-icon { width: 14px; height: 14px; opacity: .7; flex-shrink: 0; }
   .nav-item.active .nav-icon { opacity: 1; }
 
   .sidebar-footer { margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border); }
@@ -106,11 +107,13 @@
   }
   .page-title { font-size: 1.6rem; font-weight: 700; color: var(--text); line-height: 1.2; }
   .page-sub   { font-size: .8rem; color: var(--text-2); margin-top: .3rem; }
+  .region-title { font-size: .78rem; font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: .08em; margin: 1.5rem 0 .6rem; }
+  .region-title:first-of-type { margin-top: .5rem; }
 
   @keyframes fadeUp { to { opacity:1; transform:translateY(0); } }
 
   /* ── CARDS GRID ──────────────────────────────────────────────── */
-  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(162px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
 
   /* ── CARD (double-bezel) ─────────────────────────────────────── */
   .card-shell {
@@ -145,7 +148,7 @@
   .chart-card .card-inner { padding: 1.4rem; }
   .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.2rem; flex-wrap: wrap; gap: .5rem; }
   .chart-title { font-size: .9rem; font-weight: 600; color: var(--text); }
-  .chart-wrap  { position: relative; height: 260px; }
+  .chart-wrap  { position: relative; height: 234px; }
 
   /* ── FILTER BAR ──────────────────────────────────────────────── */
   .filter-bar { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
@@ -179,8 +182,8 @@
   .page.active { display: block; }
 
   /* ── LOADING ─────────────────────────────────────────────────── */
-  .loading { display: flex; align-items: center; justify-content: center; height: 160px; color: var(--text-3); font-size: .8rem; gap: .5rem; }
-  .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--green); border-radius: 50%; animation: spin .6s linear infinite; }
+  .loading { display: flex; align-items: center; justify-content: center; height: 144px; color: var(--text-3); font-size: .8rem; gap: .5rem; }
+  .spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--green); border-radius: 50%; animation: spin .6s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── CLIMA GRID ──────────────────────────────────────────────── */
@@ -355,14 +358,14 @@
       <div class="page-header">
         <div class="page-eyebrow">🇨🇱 ODEPA</div>
         <div class="page-title">Preços Chile</div>
-        <div class="page-sub">Limón — USD/cx 4,5kg por mercado</div>
+        <div class="page-sub">Limón — USD/kg por mercado</div>
       </div>
       <div class="kpi-grid" id="chile-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
       <!-- Histórico comparativo por ano -->
       <div class="card-shell chart-card">
         <div class="card-inner">
           <div class="chart-header">
-            <span class="chart-title">Histórico por Ano — Média semanal USD/cx 4,5kg</span>
+            <span class="chart-title">Histórico por Ano — Média semanal USD/kg</span>
             <select class="styled-select" id="chile-mercado-select"></select>
           </div>
           <div class="chart-wrap"><canvas id="chartChileHistorico"></canvas></div>
@@ -371,7 +374,7 @@
       <div class="two-col" style="margin-top:1rem">
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — USD/cx 4,5kg</span></div>
+            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — USD/kg</span></div>
             <div class="chart-wrap"><canvas id="chartChileUlt4sem"></canvas></div>
           </div>
         </div>
@@ -432,24 +435,42 @@
         <div class="page-sub">Condições atuais nas regiões produtoras de limão</div>
       </div>
       <div class="clima-grid" id="clima-cards"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
-      <div class="card-shell chart-card" style="margin-top:1.5rem">
+      <div class="region-title" style="margin-top:1rem">Nordeste</div>
+      <div class="two-col">
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Temperatura — 7 dias</span></div>
+            <div class="chart-wrap"><canvas id="chartClimaNETemp"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Precipitação (mm) — 7 dias</span></div>
+            <div class="chart-wrap"><canvas id="chartClimaNEChuva"></canvas></div>
+          </div>
+        </div>
+      </div>
+      <div class="region-title">Sudeste</div>
+      <div class="two-col">
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Temperatura — 7 dias</span></div>
+            <div class="chart-wrap"><canvas id="chartClimaSETemp"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Precipitação (mm) — 7 dias</span></div>
+            <div class="chart-wrap"><canvas id="chartClimaSEChuva"></canvas></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-shell chart-card" style="margin-top:1rem">
         <div class="card-inner">
           <div class="chart-header"><span class="chart-title">Previsão 7 dias — Temperatura máx.</span>
             <select class="styled-select" id="clima-cidade-select"></select>
           </div>
           <div class="chart-wrap"><canvas id="chartClimaFc"></canvas></div>
-        </div>
-      </div>
-      <div class="card-shell chart-card" style="margin-top:1rem">
-        <div class="card-inner">
-          <div class="chart-header">
-            <span class="chart-title">Comparativo todas as cidades — Temp máx. 7 dias</span>
-            <div class="filter-bar" id="clima-all-filter">
-              <div class="filter-chip active" data-metric="temp_max">Temp Máx</div>
-              <div class="filter-chip" data-metric="chuva_mm">Chuva mm</div>
-            </div>
-          </div>
-          <div class="chart-wrap"><canvas id="chartClimaAll"></canvas></div>
         </div>
       </div>
     </section>
@@ -464,6 +485,36 @@
       <div class="cidades-grid" id="clima-global-cards">
         <div class="loading"><div class="spinner"></div>Carregando…</div>
       </div>
+      <div class="region-title" style="margin-top:1rem">Europa</div>
+      <div class="two-col">
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Temperatura — 5 dias</span></div>
+            <div class="chart-wrap"><canvas id="chartGlobalEuropaTemp"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Precipitação (mm) — 5 dias</span></div>
+            <div class="chart-wrap"><canvas id="chartGlobalEuropaChuva"></canvas></div>
+          </div>
+        </div>
+      </div>
+      <div class="region-title">Américas</div>
+      <div class="two-col">
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Temperatura — 5 dias</span></div>
+            <div class="chart-wrap"><canvas id="chartGlobalAmericasTemp"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Precipitação (mm) — 5 dias</span></div>
+            <div class="chart-wrap"><canvas id="chartGlobalAmericasChuva"></canvas></div>
+          </div>
+        </div>
+      </div>
       <div class="card-shell chart-card" style="margin-top:1rem">
         <div class="card-inner">
           <div class="chart-header">
@@ -471,18 +522,6 @@
             <select class="styled-select" id="global-cidade-select"></select>
           </div>
           <div class="chart-wrap"><canvas id="chartGlobal"></canvas></div>
-        </div>
-      </div>
-      <div class="card-shell chart-card" style="margin-top:1rem">
-        <div class="card-inner">
-          <div class="chart-header">
-            <span class="chart-title">Comparativo todas as cidades — 5 dias</span>
-            <div class="filter-bar" id="global-all-filter">
-              <div class="filter-chip active" data-metric="tempMax">Temp Máx</div>
-              <div class="filter-chip" data-metric="chuva">Chuva mm</div>
-            </div>
-          </div>
-          <div class="chart-wrap"><canvas id="chartGlobalAll"></canvas></div>
         </div>
       </div>
     </section>
@@ -663,7 +702,9 @@ let EUR_BRL_DISPLAY = '6,20 (est.)';
   } catch (_) { /* usa fallback */ }
 })();
 
-const PALETTE = ['#4CAE4F','#F15A22','#72C875','#F5834E','#A0DA80','#F9AA7A','#3A9B3A','#C84800','#C8EDA0','#FFD0B0','#40C0C0'];
+// Verde e laranja TFruits como âncora (1ª e 2ª séries), seguidos de tons bem distintos
+// entre si para não se confundirem em gráficos com muitas séries (ex: 8 mercados/regiões)
+const PALETTE = ['#4CAE4F','#F15A22','#3B9DE0','#A855F7','#FBBF24','#2FBF9F','#E0526B','#8D6E63','#72C875','#5B7FDB'];
 
 Chart.defaults.color          = '#5A6B5A';
 Chart.defaults.borderColor    = 'rgba(255,255,255,.05)';
@@ -671,6 +712,54 @@ Chart.defaults.font.family    = "'Plus Jakarta Sans', sans-serif";
 Chart.defaults.font.size      = 11;
 Chart.defaults.plugins.legend.labels.boxWidth = 10;
 Chart.defaults.plugins.legend.labels.usePointStyle = true;
+
+// Pares/grupos de gráficos que mostram a mesma lista de séries (cidades/mercados/regiões) —
+// clicar na legenda de um replica o filtro nos outros do mesmo grupo.
+const CHART_SYNC_GROUPS = [
+  ['chartClimaNETemp', 'chartClimaNEChuva'],
+  ['chartClimaSETemp', 'chartClimaSEChuva'],
+  ['chartGlobalEuropaTemp', 'chartGlobalEuropaChuva'],
+  ['chartGlobalAmericasTemp', 'chartGlobalAmericasChuva'],
+  ['chartChileUlt4sem', 'chartChileLine'],
+  ['chartBrasilUlt4sem', 'chartBrasil'],
+];
+
+function syncLegendToGroup(sourceChart, hiddenByLabel) {
+  const group = CHART_SYNC_GROUPS.find(g => g.includes(sourceChart.canvas.id));
+  if (!group) return;
+  group.forEach(id => {
+    if (id === sourceChart.canvas.id) return;
+    const target = charts[id];
+    if (!target) return;
+    target.data.datasets.forEach((ds, i) => {
+      if (Object.prototype.hasOwnProperty.call(hiddenByLabel, ds.label)) {
+        target.getDatasetMeta(i).hidden = hiddenByLabel[ds.label];
+      }
+    });
+    target.update();
+  });
+}
+
+// Clique na legenda isola a série clicada (mostra só ela), em vez do padrão do Chart.js
+// (que some com a série clicada e mantém as outras). Clicar de novo na mesma série restaura todas.
+// Se o gráfico faz parte de um CHART_SYNC_GROUPS, o mesmo filtro é replicado nos gráficos irmãos.
+Chart.defaults.plugins.legend.onClick = function (e, legendItem, legend) {
+  const chart = legend.chart;
+  const idx   = legendItem.datasetIndex;
+  const isHidden = (i) => {
+    const meta = chart.getDatasetMeta(i);
+    return meta.hidden === null ? !!chart.data.datasets[i].hidden : !!meta.hidden;
+  };
+  const onlyThisVisible = chart.data.datasets.every((_, i) => i === idx ? !isHidden(i) : isHidden(i));
+  const hiddenByLabel = {};
+  chart.data.datasets.forEach((ds, i) => {
+    const hidden = onlyThisVisible ? null : (i !== idx);
+    chart.getDatasetMeta(i).hidden = hidden;
+    hiddenByLabel[ds.label] = hidden;
+  });
+  chart.update();
+  syncLegendToGroup(chart, hiddenByLabel);
+};
 
 // ═══════════════════════════════════════════════════════════════
 // SUPABASE FETCH — paginação automática até buscar todos os registros
@@ -990,7 +1079,7 @@ async function loadChile() {
   if (!data.length) { pageError('chile-kpis', 'Sem dados'); return; }
 
   // Normaliza tipos + converte CLP → USD
-  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +(+d.precio * 4.5 * CLP_TO_USD).toFixed(4); }); // CLP/kg → USD/cx 4.5kg
+  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +(+d.precio * CLP_TO_USD).toFixed(4); }); // CLP/kg → USD/kg
 
   const mercados = [...new Set(data.map(d => d.mercado).filter(Boolean))].sort();
   const anos     = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
@@ -1017,8 +1106,8 @@ async function loadChile() {
     // Média anual
     const avgAnual = anoData.reduce((s,d) => s+d.precio, 0) / anoData.length;
     renderKpis('chile-kpis', [
-      { label: 'Preço médio (últ. 4 sem)', value: `US$ ${avg4sem.toFixed(2)}`, unit: 'USD/cx 4,5kg', trend },
-      { label: `Média anual ${ano}`,        value: `US$ ${avgAnual.toFixed(2)}`, unit: 'USD/cx 4,5kg' },
+      { label: 'Preço médio (últ. 4 sem)', value: `US$ ${avg4sem.toFixed(2)}`, unit: 'USD/kg', trend },
+      { label: `Média anual ${ano}`,        value: `US$ ${avgAnual.toFixed(2)}`, unit: 'USD/kg' },
       { label: 'Mercados',                  value: mercados.length, unit: 'monitorados' },
       { label: 'Semana atual',              value: lastSem, unit: `/${ano}` },
       { label: 'Câmbio do dia',             value: `${USD_CLP_DISPLAY}`, unit: 'CLP por 1 USD' },
@@ -1251,6 +1340,18 @@ const FUNGAL_TMIN = 18;  // °C temp_max mínima da faixa favorável a fungos (G
 const FUNGAL_TMAX = 28;  // °C temp_max máxima da faixa favorável a fungos
 const FUNGAL_DAYS =  3;  // dias consecutivos para disparar alerta fúngico
 
+// Agrupamento das regiões produtoras monitoradas (Clima Local)
+const REGIOES_CLIMA_BRASIL = {
+  'Nordeste': ['Capitão Poço/PA', 'Cruz das Almas/BA', 'Itaberaba/BA', 'Japoatã/SE', 'Tapiramuta/BA'],
+  'Sudeste':  ['Fernando Prestes/SP', 'Marapoama/SP', 'Matias Cardoso/MG'],
+};
+
+// Agrupamento continental das cidades monitoradas (Clima Global) — por código de país (ISO2)
+const REGIOES_CLIMA_GLOBAL = {
+  'Europa':   ['FR', 'GB', 'NL', 'ES', 'PT', 'GR', 'PL'],
+  'Américas': ['CL', 'CA'],
+};
+
 function rainAlert(totalMm, maxDayMm) {
   if (totalMm >= RAIN_CRITIC || maxDayMm >= RAIN_DAY_CRITIC)
     return { level: 'critic', html: `<span class="rain-badge critic">🚨 ${Math.round(totalMm)}mm/7d · pico ${Math.round(maxDayMm)}mm</span>` };
@@ -1365,17 +1466,9 @@ async function loadClimaLocal() {
   sel.addEventListener('change', () => drawClimaFc(forecast, sel.value));
   if (cidades.length) drawClimaFc(forecast, cidades[0]);
 
-  // Gráfico comparativo todas as cidades
-  let metricaAll = 'temp_max';
-  drawClimaAll(forecast, cidades, metricaAll);
-  document.getElementById('clima-all-filter').querySelectorAll('.filter-chip').forEach(c => {
-    c.addEventListener('click', () => {
-      document.getElementById('clima-all-filter').querySelectorAll('.filter-chip').forEach(x=>x.classList.remove('active'));
-      c.classList.add('active');
-      metricaAll = c.dataset.metric;
-      drawClimaAll(forecast, cidades, metricaAll);
-    });
-  });
+  // Consolidado por região — Nordeste / Sudeste (temp + precipitação lado a lado)
+  drawClimaRegiao(forecast, REGIOES_CLIMA_BRASIL['Nordeste'], 'chartClimaNETemp', 'chartClimaNEChuva');
+  drawClimaRegiao(forecast, REGIOES_CLIMA_BRASIL['Sudeste'],  'chartClimaSETemp', 'chartClimaSEChuva');
 }
 
 function drawClimaFc(forecast, cidade) {
@@ -1406,7 +1499,8 @@ function drawClimaFc(forecast, cidade) {
   });
 }
 
-function drawClimaAll(forecast, cidades, metrica) {
+// Consolidado regional: temperatura (linha) + precipitação (barra) para um grupo de cidades
+function drawClimaRegiao(forecast, cidades, canvasTempId, canvasChuvaId) {
   // Para cada cidade, pega o extracted_at mais recente e os 7 dias de previsão
   const byCity = {};
   cidades.forEach(cidade => {
@@ -1416,23 +1510,31 @@ function drawClimaAll(forecast, cidades, metrica) {
       .sort((a,b)=>a.data_previsao.localeCompare(b.data_previsao)).slice(0,7);
   });
 
-  // Labels = datas da primeira cidade disponível
-  const refCidade = cidades.find(c=>byCity[c].length>0);
+  // Labels = datas da primeira cidade disponível no grupo
+  const refCidade = cidades.find(c=>byCity[c] && byCity[c].length>0);
   if (!refCidade) return;
   const labels = byCity[refCidade].map(f=>f.data_previsao.slice(5));
 
-  const datasets = cidades.map((cidade, i) =>
-    lineDs(cidade.split('/')[0], byCity[cidade].map(f=>+(f[metrica]||0)), PALETTE[i%PALETTE.length])
-  );
-
-  const label = metrica==='temp_max' ? 'Temp Máx °C' : 'Chuva mm';
-  mkChart('chartClimaAll', {
+  mkChart(canvasTempId, {
     type: 'line',
-    data: { labels, datasets },
+    data: { labels, datasets: cidades.map((cidade, i) =>
+      lineDs(cidade.split('/')[0], byCity[cidade].map(f=>+(f.temp_max||0)), PALETTE[i%PALETTE.length])
+    ) },
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
       plugins:{ legend:{position:'bottom'},
-        tooltip:{ callbacks:{ label: ctx=>`${ctx.dataset.label}: ${ctx.raw}${metrica==='temp_max'?'°C':'mm'}` }}},
-      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}} } }
+        tooltip:{ callbacks:{ label: ctx=>`${ctx.dataset.label}: ${ctx.raw}°C` }}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}, ticks:{callback: v=>`${v}°`}} } }
+  });
+
+  mkChart(canvasChuvaId, {
+    type: 'bar',
+    data: { labels, datasets: cidades.map((cidade, i) =>
+      barDs(cidade.split('/')[0], byCity[cidade].map(f=>+(f.chuva_mm||0)), PALETTE[i%PALETTE.length])
+    ) },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{position:'bottom'},
+        tooltip:{ callbacks:{ label: ctx=>`${ctx.dataset.label}: ${ctx.raw}mm` }}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'}, ticks:{callback: v=>`${v}mm`}} } }
   });
 }
 
@@ -1544,20 +1646,15 @@ async function loadClimaGlobal() {
   sel.addEventListener('change', () => drawGlobal(sel.value));
   if (cidades.length) drawGlobal(cidades[0]);
 
-  // Gráfico comparativo todas as cidades globais
-  let metricaGlobalAll = 'tempMax';
-  drawGlobalAll(data, cidades, metricaGlobalAll);
-  document.getElementById('global-all-filter').querySelectorAll('.filter-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      document.getElementById('global-all-filter').querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
-      chip.classList.add('active');
-      metricaGlobalAll = chip.dataset.metric;
-      drawGlobalAll(data, cidades, metricaGlobalAll);
-    });
-  });
+  // Consolidado por região — Europa / Américas (temp + precipitação lado a lado)
+  const cidadesEuropa   = cidades.filter(k => REGIOES_CLIMA_GLOBAL['Europa'].includes(k.split('|')[1]));
+  const cidadesAmericas = cidades.filter(k => REGIOES_CLIMA_GLOBAL['Américas'].includes(k.split('|')[1]));
+  drawGlobalRegiao(data, cidadesEuropa,   'chartGlobalEuropaTemp',   'chartGlobalEuropaChuva');
+  drawGlobalRegiao(data, cidadesAmericas, 'chartGlobalAmericasTemp', 'chartGlobalAmericasChuva');
 }
 
-function drawGlobalAll(data, cidades, metrica) {
+// Consolidado regional: temperatura (linha) + precipitação (barra) para um grupo de cidades globais
+function drawGlobalRegiao(data, cidades, canvasTempId, canvasChuvaId) {
   // Para cada cidade, agrega por dia (mesmo critério do drawGlobal)
   const byCity = {};
   cidades.forEach(key => {
@@ -1578,23 +1675,31 @@ function drawGlobalAll(data, cidades, metrica) {
   if (!refKey) return;
   const labels = byCity[refKey].map(r => r.day.slice(5));
 
-  const datasets = cidades.map((key, i) => {
-    const label = key.split('|')[0];
-    const vals  = byCity[key].map(r => r[metrica]);
-    return lineDs(label, vals, PALETTE[i % PALETTE.length]);
-  });
-
-  mkChart('chartGlobalAll', {
+  mkChart(canvasTempId, {
     type: 'line',
-    data: { labels, datasets },
+    data: { labels, datasets: cidades.map((key, i) =>
+      lineDs(key.split('|')[0], byCity[key].map(r => r.tempMax), PALETTE[i % PALETTE.length])
+    ) },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { position: 'bottom' },
-        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}${metrica === 'tempMax' ? '°C' : 'mm'}` }}
-      },
-      scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(255,255,255,.04)' } } }
+      plugins: { legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}°C` }}},
+      scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(255,255,255,.04)' }, ticks:{callback: v=>`${v}°`} } }
+    }
+  });
+
+  mkChart(canvasChuvaId, {
+    type: 'bar',
+    data: { labels, datasets: cidades.map((key, i) =>
+      barDs(key.split('|')[0], byCity[key].map(r => r.chuva), PALETTE[i % PALETTE.length])
+    ) },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}mm` }}},
+      scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(255,255,255,.04)' }, ticks:{callback: v=>`${v}mm`} } }
     }
   });
 }
