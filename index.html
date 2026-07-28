@@ -318,9 +318,9 @@
     <!-- ── BRASIL ──────────────────────────────────────────────── -->
     <section class="page active" id="page-brasil">
       <div class="page-header">
-        <div class="page-eyebrow">🇧🇷 Notícias Agrícolas / CEASAs</div>
+        <div class="page-eyebrow">🇧🇷 HF Brasil / Cepea</div>
         <div class="page-title">Preços Brasil</div>
-        <div class="page-sub">Lima Ácida Tahiti — R$/cx 4,5kg por região</div>
+        <div class="page-sub">Lima Ácida Tahiti — Colhida — R$/cx 4,5kg</div>
       </div>
       <div class="kpi-grid" id="brasil-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
       <!-- Histórico comparativo por ano -->
@@ -337,7 +337,7 @@
       <div class="two-col" style="margin-top:1rem">
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — R$/kg por região</span></div>
+            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — Média das regiões (R$/cx 4,5kg)</span></div>
             <div class="chart-wrap"><canvas id="chartBrasilUlt4sem"></canvas></div>
           </div>
         </div>
@@ -721,7 +721,7 @@ const CHART_SYNC_GROUPS = [
   ['chartGlobalEuropaTemp', 'chartGlobalEuropaChuva'],
   ['chartGlobalAmericasTemp', 'chartGlobalAmericasChuva'],
   ['chartChileUlt4sem', 'chartChileLine'],
-  ['chartBrasilUlt4sem', 'chartBrasil'],
+  // Brasil Ult4sem virou média única (paridade PBI) — sync com Evolução removido
 ];
 
 function syncLegendToGroup(sourceChart, hiddenByLabel) {
@@ -975,9 +975,10 @@ async function loadBrasil() {
 
   // ── SELECT de região para histórico ──
   const selReg = document.getElementById('brasil-regiao-select');
-  selReg.innerHTML = regioes.map(r => `<option value="${r}">${r}</option>`).join('');
+  selReg.innerHTML = `<option value="__ALL__">Todas as regiões (média)</option>` +
+    regioes.map(r => `<option value="${r}">${r}</option>`).join('');
   selReg.addEventListener('change', () => drawBrasilHistorico(data, anos, selReg.value));
-  drawBrasilHistorico(data, anos, regioes[0]);
+  drawBrasilHistorico(data, anos, '__ALL__');  // padrão = média, igual ao PBI
 
   // ── Últimas 4 semanas ──
   drawBrasilUlt4sem(data, regioes, curAno);
@@ -1000,7 +1001,7 @@ async function loadBrasil() {
 // Histórico comparativo: uma linha por ano, eixo X = semana ISO
 function drawBrasilHistorico(data, anos, regiao) {
   const hf = data.filter(d => d.tipo === 'HF Brasil');
-  const filtered = hf.filter(d => d.regiao === regiao);
+  const filtered = regiao === '__ALL__' ? hf : hf.filter(d => d.regiao === regiao);
   const semanas = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
   const datasets = anos.map((ano, i) =>
     lineDs(String(ano), semanas.map(s => {
@@ -1029,17 +1030,17 @@ function drawBrasilHistorico(data, anos, regiao) {
   });
 }
 
-// Últimas 4 semanas: barras agrupadas por região
+// Últimas 4 semanas: média das regiões por semana (igual ao visual "04 últimas semanas" do PBI)
 function drawBrasilUlt4sem(data, regioes, curAno) {
   const curData = data.filter(d => d.ano === curAno);
   const semanas = [...new Set(curData.map(d => d.semana))].sort((a,b)=>b-a).slice(0,4).reverse();
   const labels  = semanas.map(s => `Sem ${s}`);
-  const datasets = regioes.map((reg, i) =>
-    barDs(reg, semanas.map(s => {
-      const rows = curData.filter(d => d.semana === s && d.regiao === reg);
+  const datasets = [
+    barDs('Média das regiões', semanas.map(s => {
+      const rows = curData.filter(d => d.semana === s);
       return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(2) : 0;
-    }), PALETTE[i % PALETTE.length])
-  );
+    }), PALETTE[0])
+  ];
   mkChart('chartBrasilUlt4sem', {
     type: 'bar',
     data: { labels, datasets },
