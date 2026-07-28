@@ -966,7 +966,7 @@ async function loadBrasil() {
     renderKpis('brasil-kpis', [
       { label: 'Preço médio (últ. 4 sem)', value: `R$ ${avg4sem.toFixed(2)}`,  unit: 'R$/cx 4,5kg', trend },
       { label: `Média anual ${ano}`,        value: `R$ ${avgAnual.toFixed(2)}`, unit: 'R$/cx 4,5kg' },
-      { label: 'CEASAs',                    value: regioes.length, unit: 'monitoradas' },
+      { label: 'Regiões (HF Brasil)',       value: regioes.length, unit: 'monitoradas' },
       { label: 'Semana atual',              value: lastSem, unit: `/${ano}` },
     ]);
   }
