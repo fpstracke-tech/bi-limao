@@ -1,27 +1,21 @@
-name: ETL Clima Local — semanal
+name: ETL Clima Global — diário
 
-# Mantido SEMANAL de propósito: a HG Brasil (plano gratuito) permite apenas
-# 10 requisições/dia por chave e monitoramos 8 cidades — diário deixaria zero
-# folga para re-run manual ou cidade nova.
-# Não há prejuízo: a HG Brasil devolve 15 dias de previsão, então a coleta
-# semanal ainda deixa 8+ dias à frente no gráfico.
-# O Clima Global roda diariamente em etl_clima_global.yml (limite da OWM é 5 dias).
+# Roda TODOS OS DIAS porque a OpenWeatherMap (plano gratuito) entrega apenas
+# 5 dias de previsão: com coleta semanal, na quinta sobravam 3 dias e no domingo
+# a página ficava sem previsão futura.
+# Cota OWM: 9 cidades = 9 chamadas/dia, folga larga no plano gratuito.
+# Separado do Clima Local de propósito — a HG Brasil só permite 10 req/dia.
 
 on:
   schedule:
-    - cron: '0 9 * * 1'   # Toda segunda-feira às 06:00 BRT (09:00 UTC)
+    - cron: '0 9 * * *'   # Todos os dias às 06:00 BRT (09:00 UTC)
   workflow_dispatch:
-    inputs:
-      debug:
-        description: 'Ativar output verboso'
-        required: false
-        default: 'false'
 
 jobs:
-  etl-clima-local:
-    name: Clima Local (HG Brasil)
+  etl-clima-global:
+    name: Clima Global (OpenWeatherMap)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     permissions:
       issues: write
       contents: read
@@ -29,7 +23,7 @@ jobs:
     env:
       SUPABASE_URL:     ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY:     ${{ secrets.SUPABASE_KEY }}
-      HG_API_KEY:       ${{ secrets.HG_API_KEY }}
+      OWM_API_KEY:      ${{ secrets.OWM_API_KEY }}
       PYTHONIOENCODING: utf-8
 
     steps:
@@ -45,22 +39,22 @@ jobs:
       - name: Instalar dependências
         run: pip install --upgrade pip && pip install -r requirements.txt
 
-      - name: ETL Clima Local (HG Brasil)
-        id: clima_local
-        run: python etl_clima_brasil.py
+      - name: ETL Clima Global (OpenWeatherMap)
+        id: clima_global
+        run: python etl_clima_openweather.py
 
       - name: Resumo
         if: always()
         run: |
-          echo "### Resultado ETL Clima Local — $(date -u '+%Y-%m-%d %H%M UTC')"
-          echo "Clima Local: ${{ steps.clima_local.outcome }}"
+          echo "### Resultado ETL Clima Global — $(date -u '+%Y-%m-%d %H%M UTC')"
+          echo "Clima Global: ${{ steps.clima_global.outcome }}"
 
       - name: Abrir issue em caso de falha
         if: failure()
         uses: actions/github-script@v7
         with:
           script: |
-            const title = `❌ Falha ETL Clima Local — ${new Date().toISOString().slice(0,16).replace('T',' ')} UTC`;
+            const title = `❌ Falha ETL Clima Global — ${new Date().toISOString().slice(0,16).replace('T',' ')} UTC`;
             const body = [
               `**Workflow:** ${context.workflow}`,
               `**Run:** ${context.runId}`,
