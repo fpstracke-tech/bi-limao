@@ -225,16 +225,22 @@
 
   /* Containers: tabela à esquerda no tamanho que precisa, resumo da temporada
      ocupando o espaço que sobra — mesmo arranjo do relatório da fonte. */
-  .cont-layout { display: grid; grid-template-columns: minmax(0,auto) minmax(260px,1fr); gap: 1rem; align-items: start; }
+  /* Tabela no tamanho que precisa à esquerda, resumo ocupando o resto. O
+     max-width evita o resumo virar uma faixa gigante vazia em tela ultrawide. */
+  .cont-layout { display: grid; grid-template-columns: minmax(0,auto) minmax(300px,1fr); gap: 1rem; align-items: start; max-width: 1280px; }
   @media (max-width: 1100px) { .cont-layout { grid-template-columns: 1fr; } }
-  .resumo-linha { padding: .7rem 0; border-bottom: 1px solid rgba(255,255,255,.05); }
-  .resumo-linha:last-child { border-bottom: none; }
-  .resumo-titulo { font-size: .62rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); margin-bottom: .45rem; }
-  .resumo-vals { display: flex; gap: 1.4rem; flex-wrap: wrap; }
-  .resumo-item { display: flex; flex-direction: column; gap: .1rem; }
-  .resumo-ano { font-size: .6rem; color: var(--text-3); }
-  .resumo-num { font-size: 1rem; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-  .resumo-var { font-size: .62rem; font-variant-numeric: tabular-nums; }
+  /* Resumo como tabela, e não como cards soltos: os anos precisam ficar
+     alinhados em coluna para comparar de bater o olho, igual ao relatório. */
+  table.resumo { width: 100%; border-collapse: collapse; }
+  table.resumo th { padding: .35rem .5rem .5rem; text-align: right; }
+  table.resumo th:first-child { text-align: left; }
+  table.resumo td { padding: .85rem .5rem; border-bottom: 1px solid rgba(255,255,255,.05); text-align: right; font-variant-numeric: tabular-nums; }
+  table.resumo tr:last-child td { border-bottom: none; }
+  table.resumo tr:hover td { background: transparent; }
+  table.resumo .resumo-rot { text-align: left; color: var(--text-2); white-space: normal; max-width: 190px; line-height: 1.35; }
+  table.resumo .resumo-num { font-size: 1.15rem; font-weight: 600; color: var(--text); }
+  table.resumo .resumo-var { font-size: .68rem; padding-left: 0; }
+  table.resumo .resumo-zebra { background: rgba(255,255,255,.022); }
   table.table-mes tfoot td {
     border-top: 1px solid var(--border); border-bottom: none;
     color: var(--text); font-weight: 600; background: rgba(255,255,255,.02);
@@ -681,7 +687,10 @@
         </div>
         <div class="card-shell">
           <div class="card-inner">
-            <div class="chart-header" style="margin-bottom:.4rem"><span class="chart-title">Resumo da temporada</span></div>
+            <div class="chart-header" style="margin-bottom:.4rem">
+              <span class="chart-title">Resumo da temporada</span>
+              <select class="styled-select" id="cont-resumo-semana"></select>
+            </div>
             <div id="cont-resumo"></div>
             <div class="chart-note" id="cont-comp-note"></div>
           </div>
@@ -2097,43 +2106,76 @@ async function loadContainers() {
   const semanasBase = [...new Set(data.map(d=>d.week))].sort((a,b)=>a-b);
   const primSem = semanasBase[0], ultSem = semanasBase[semanasBase.length-1];
 
-  // Painel de resumo no recorte do "Season Information" da fonte. Cada linha
-  // traz os três anos e a variação do atual contra o anterior.
+  // Painel de resumo no recorte do "Season Information" da fonte.
+  // A semana de referência é SELECIONÁVEL e o default é a última semana
+  // FECHADA (S{atual-1}) — é o que a fonte mostra por padrão. Usar a semana
+  // corrente fazia o painel divergir do relatório: em 30/07 a fonte exibia
+  // "Week 30 volumes = 191/257/143" e nós mostrávamos a S31 (284/65/183).
   function varTag(v) {
-    if (v == null) return '<span class="resumo-var" style="color:var(--text-3)">—</span>';
+    if (v == null) return '<span style="color:var(--text-3)">—</span>';
     const cor = v >= 0 ? 'var(--green)' : '#EF5350';
-    return `<span class="resumo-var" style="color:${cor}">${v>=0?'▲':'▼'} ${Math.abs(v).toFixed(0)}%</span>`;
-  }
-  function linhaResumo(titulo, valorPorAno, nota) {
-    const itens = anosDesc.map((a, i) => {
-      const v = valorPorAno(a);
-      const ref = i === 0 ? valorPorAno(anosDesc[1]) : null;
-      return `<div class="resumo-item">
-        <span class="resumo-ano">${a}</span>
-        <span class="resumo-num">${nfCont(v)}</span>
-        ${i === 0 ? varTag(varPct(v, ref)) : '<span class="resumo-var">&nbsp;</span>'}
-      </div>`;
-    }).join('');
-    return `<div class="resumo-linha">
-      <div class="resumo-titulo">${titulo}</div>
-      <div class="resumo-vals">${itens}</div>
-      ${nota ? `<div class="chart-note" style="margin-top:.4rem">${nota}</div>` : ''}
-    </div>`;
+    return `<span style="color:${cor}">${v>=0?'▲':'▼'} ${Math.abs(v).toFixed(0)}%</span>`;
   }
 
+  const selSemana = document.getElementById('cont-resumo-semana');
+
   function renderResumo(flow) {
+    // Semanas com dado na temporada corrente — são as que fazem sentido como
+    // referência (as futuras estão vazias).
+    const comDado = data
+      .filter(d => d.flow === flow && d.year === curAno && d.total_containers != null)
+      .map(d => d.week).sort((a,b) => a - b);
+    const fechadas = comDado.filter(w => w <= semanaISO - 1);
+    const padrao = fechadas.length ? Math.max(...fechadas)
+                 : (comDado.length ? Math.max(...comDado) : ultSem);
+
+    const anterior = +selSemana.value;
+    const opcoes = comDado.length ? comDado : semanasBase;
+    selSemana.innerHTML = [...opcoes].reverse()
+      .map(w => `<option value="${w}">Semana S${w}</option>`).join('');
+    selSemana.value = opcoes.includes(anterior) ? anterior : padrao;
+    const semRef = +selSemana.value;
+
     const acum = ano => {
-      const vs = data.filter(d => d.flow === flow && d.year === ano && d.week <= semanaISO && d.total_containers != null);
-      return vs.length ? vs.reduce((s,d)=>s+d.total_containers, 0) : null;
+      const vs = data.filter(d => d.flow === flow && d.year === ano
+                              && d.week <= semRef && d.total_containers != null);
+      return vs.length ? vs.reduce((s,d) => s + d.total_containers, 0) : null;
     };
     const temTotal = anosDesc.some(a => totalFonte(flow, a) != null);
+
+    const linhas = [
+      { rot: `Volume da semana S${semRef}`, val: a => valSem(flow, a, semRef) },
+      // Sem Δ de propósito: a variação sobre uma janela parcial engana. Em
+      // 30/07, S23–S30 dava −6% enquanto a temporada desde a S1 estava +1% na
+      // fonte — sinal invertido. Os absolutos ficam, a conclusão de tendência não.
+      { rot: `Acumulado S${primSem}–S${semRef} <span style="color:var(--text-3)">(janela em base)</span>`,
+        val: acum, semDelta: true },
+      { rot: 'Temporada completa', val: a => totalFonte(flow, a) },
+    ];
+
+    const cabecalho = `<tr><th></th>` + anosDesc.map((a,i) =>
+      `<th class="col-num${i%2===1?' resumo-zebra':''}" colspan="2">${a}</th>`).join('') + `</tr>`;
+
+    const corpo = linhas.map(({rot, val, semDelta}) => {
+      const cels = anosDesc.map((a, i) => {
+        const v   = val(a);
+        const ref = i === 0 ? val(anosDesc[1]) : null;
+        const z   = i % 2 === 1 ? ' resumo-zebra' : '';
+        const dt  = (i === 0 && !semDelta) ? varTag(varPct(v, ref)) : '';
+        return `<td class="resumo-num${z}">${nfCont(v)}</td>` +
+               `<td class="resumo-var${z}">${dt}</td>`;
+      }).join('');
+      return `<tr><td class="resumo-rot">${rot}</td>${cels}</tr>`;
+    }).join('');
+
     document.getElementById('cont-resumo').innerHTML =
-      linhaResumo(`Volume da semana S${semanaISO}`, a => valSem(flow, a, semanaISO)) +
-      linhaResumo(`Acumulado S${primSem}–S${semanaISO}`, acum,
-        `Soma das semanas em base. A fonte publica uma janela móvel (hoje S${primSem}–S${ultSem}), então não é o acumulado desde a S1.`) +
-      linhaResumo('Temporada completa', a => totalFonte(flow, a),
-        temTotal ? 'Total do ano informado pela fonte.'
-                 : 'Indisponível: o ETL gravou rótulo de ano no lugar do total — corrigir <code>parse_table</code> e rodar de novo.');
+      `<table class="resumo"><thead>${cabecalho}</thead><tbody>${corpo}</tbody></table>`;
+
+    document.getElementById('cont-comp-note').innerHTML =
+      `Δ compara ${anosDesc[0]} com ${anosDesc[1]}. O acumulado soma apenas as semanas em base ` +
+      `(hoje S${primSem}–S${ultSem}) — a fonte publica uma janela móvel, então não é o acumulado desde a S1. ` +
+      (temTotal ? 'A temporada completa é o total do ano informado pela fonte.'
+                : '<strong>Temporada completa indisponível</strong>: o ETL não gravou a linha TOTAL.');
   }
 
   function drawContComp(flow) {
@@ -2203,6 +2245,7 @@ async function loadContainers() {
   const selFlow = document.getElementById('cont-comp-flow');
   const desenhar = () => { drawContComp(selFlow.value); renderResumo(selFlow.value); };
   selFlow.addEventListener('change', desenhar);
+  selSemana.addEventListener('change', () => renderResumo(selFlow.value));
   desenhar();
 }
 
