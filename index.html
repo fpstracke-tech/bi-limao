@@ -193,8 +193,8 @@
   .cidade-temp { font-size: 2rem; font-weight: 700; color: var(--green); line-height: 1; }
   .cidade-desc { font-size: .7rem; color: var(--text-2); }
   .cidade-extra { display: flex; gap: .8rem; margin-top: .4rem; }
-  .cidade-extra span { font-size: .65rem; color: var(--text-3); }
-  .cidade-medicao { font-size: .6rem; color: var(--text-3); opacity: .75; margin-top: .45rem; }
+  .cidade-extra span { font-size: .65rem; color: var(--text-2); }
+  .cidade-medicao { font-size: .62rem; color: var(--text-2); margin-top: .45rem; }
   .rain-badge { display:inline-block; margin-top:.4rem; padding:.2rem .5rem; border-radius:4px; font-size:.65rem; font-weight:600; }
   .rain-badge.warn   { background:rgba(245,131,78,.15); color:#F5834E; border:1px solid rgba(245,131,78,.4); }
   .rain-badge.critic { background:rgba(239,83,80,.15);  color:#EF5350; border:1px solid rgba(239,83,80,.4); animation: pulse-rain 1.5s ease-in-out infinite; }
@@ -707,7 +707,7 @@ let EUR_BRL_DISPLAY = '6,20 (est.)';
 // entre si para não se confundirem em gráficos com muitas séries (ex: 8 mercados/regiões)
 const PALETTE = ['#4CAE4F','#F15A22','#3B9DE0','#A855F7','#FBBF24','#2FBF9F','#E0526B','#8D6E63','#72C875','#5B7FDB'];
 
-Chart.defaults.color          = '#5A6B5A';
+Chart.defaults.color          = '#9DB09D';  // legendas e eixos — 8.4:1 de contraste
 Chart.defaults.borderColor    = 'rgba(255,255,255,.05)';
 Chart.defaults.font.family    = "'Plus Jakarta Sans', sans-serif";
 Chart.defaults.font.size      = 11;
