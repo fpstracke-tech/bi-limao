@@ -1655,12 +1655,17 @@ function drawClimaRegiao(forecast, cidades, canvasTempId, canvasChuvaId) {
 // ── CLIMA GLOBAL ─────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════
 async function loadClimaGlobal() {
+  // A tabela acumula um snapshot por run do ETL (1.881 registros desde junho).
+  // Sem filtrar por data, `order=data_hora.asc` devolvia os registros MAIS ANTIGOS
+  // e a página exibia a previsão de junho como se fosse atual.
+  // Filtro no servidor: só o que é de hoje para frente.
   const data = await sbFetch('clima_forecast', {
-    select:'cidade,pais,data_hora,temp_c,temp_min,temp_max,chuva_mm,descricao,humidade_pct',
-    order:'data_hora.asc', limit:500
+    select:'cidade,pais,data_hora,temp_c,temp_min,temp_max,chuva_mm,descricao,humidade_pct,extracted_at',
+    'data_hora': `gte.${hojeISO()}`,
+    order:'data_hora.asc'
   });
 
-  if (!data.length) return;
+  if (!data.length) { pageError('clima-global', new Error('Sem previsão futura disponível — verificar ETL')); return; }
 
   // Condição atual por cidade = primeiro registro (mais próximo)
   const seenCity = {}; const latest = [];
@@ -1707,6 +1712,7 @@ async function loadClimaGlobal() {
         <span>🌧 ${(+c.chuva_mm || 0).toFixed(1)}mm</span>
         <span>↑${c.temp_max}° ↓${c.temp_min}°</span>
       </div>
+      <div class="cidade-medicao">previsão para ${fmtDataHora(c.data_hora)}</div>
       ${alerta ? alerta.html : ''}
     </div>`;
     container.appendChild(div);
