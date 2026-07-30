@@ -411,7 +411,7 @@
       <div class="two-col" style="margin-top:1rem">
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — €/cx 4,5 kg</span></div>
+            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — Média dos mercados (€/cx 4,5kg)</span></div>
             <div class="chart-wrap"><canvas id="chartEuropaUlt4sem"></canvas></div>
           </div>
         </div>
@@ -1298,14 +1298,26 @@ function drawChileLine(data, mercados, ano) {
 // ── EUROPA ───────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════
 async function loadEuropa() {
-  const data = await sbFetch('europa_precos', {
+  const raw = await sbFetch('europa_precos', {
     select: 'semana,ano,mercado,preco_4_5kg',
     order: 'ano.asc,semana.asc'
   });
 
-  if (!data.length) { pageError('europa-kpis', 'Sem dados'); return; }
+  if (!raw.length) { pageError('europa-kpis', 'Sem dados'); return; }
 
-  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.preco_4_5kg = +d.preco_4_5kg; });
+  raw.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.preco_4_5kg = +d.preco_4_5kg; });
+
+  // A tabela mistura duas gerações de dado: 'Agregado' (importação histórica, 1 linha
+  // por semana) e as cotações por mercado do ETL FranceAgriMer (N linhas por semana).
+  // Nas semanas em que os dois existem, o 'Agregado' é a MESMA informação já
+  // representada pelos mercados — mantê-lo distorce a média em até 3,6%.
+  // Regra: onde há cotação por mercado, ignora o 'Agregado'; senão, usa o 'Agregado'.
+  const temMercadoReal = new Set(
+    raw.filter(d => d.mercado && d.mercado !== 'Agregado').map(d => `${d.ano}-${d.semana}`)
+  );
+  const data = raw.filter(d =>
+    (d.mercado && d.mercado !== 'Agregado') || !temMercadoReal.has(`${d.ano}-${d.semana}`)
+  );
 
   const anos    = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
   const curAno  = Math.max(...anos);
@@ -1327,7 +1339,16 @@ async function loadEuropa() {
     const trend    = avgPrev4 ? ((avg4sem - avgPrev4) / avgPrev4) * 100 : null;
     // Média anual
     const avgAnual = anoData.reduce((s,d) => s+d.preco_4_5kg, 0) / anoData.length;
+    // Último preço válido — média da última semana coletada, vs semana anterior com dado
+    const semsComDado = [...new Set(anoData.map(d => d.semana))].sort((a,b) => a-b);
+    const lastRows = anoData.filter(d => d.semana === lastSem);
+    const avgLast  = lastRows.reduce((s,d) => s+d.preco_4_5kg, 0) / lastRows.length;
+    const semPrev  = semsComDado[semsComDado.length - 2];
+    const prevRows = semPrev ? anoData.filter(d => d.semana === semPrev) : [];
+    const avgPrevSem = prevRows.length ? prevRows.reduce((s,d) => s+d.preco_4_5kg, 0) / prevRows.length : 0;
+    const trendLast  = avgPrevSem ? ((avgLast - avgPrevSem) / avgPrevSem) * 100 : null;
     renderKpis('europa-kpis', [
+      { label: `Último preço — Sem ${lastSem}`, value: `€ ${avgLast.toFixed(2)}`, unit: '€/cx 4,5kg', trend: trendLast },
       { label: 'Preço médio (últ. 4 sem)', value: `€ ${avg4sem.toFixed(2)}`,  unit: '€/cx 4,5kg', trend },
       { label: `Média anual ${ano}`,        value: `€ ${avgAnual.toFixed(2)}`, unit: '€/cx 4,5kg' },
       { label: 'Anos histórico',            value: anos.length, unit: 'anos' },
@@ -1365,18 +1386,28 @@ async function loadEuropa() {
       scales:scalesEUR, spanGaps:true }
   });
 
-  // ── Últimas 4 semanas
+  // ── Últimas 4 semanas — média dos mercados (mesmo padrão de Brasil e Chile)
   const ult4sems = sems.slice(-4);
+  const valoresEu = ult4sems.map(s => {
+    const rows = curData.filter(d => d.semana === s);
+    return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(2) : 0;
+  });
+  // Semana atual em laranja TFruits, mesma intensidade
+  const bgEu   = valoresEu.map((_, i) => i === valoresEu.length - 1 ? PALETTE[1] + 'BB' : PALETTE[0] + 'BB');
+  const bordEu = valoresEu.map((_, i) => i === valoresEu.length - 1 ? PALETTE[1] : PALETTE[0]);
   mkChart('chartEuropaUlt4sem', {
     type: 'bar',
     data: {
       labels: ult4sems.map(s=>`Sem ${s}`),
-      datasets: [barDs('€/cx 4,5kg', ult4sems.map(s => {
-        const rows = curData.filter(d => d.semana === s);
-        return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : 0;
-      }), PALETTE[2])]
+      datasets: [{
+        label: 'Média dos mercados', data: valoresEu,
+        backgroundColor: bgEu, borderColor: bordEu,
+        borderWidth: 1, borderRadius: 6, borderSkipped: false
+      }]
     },
-    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip: tooltipEUR},
+    plugins: [barValueLabels('€')],
+    options: { responsive:true, maintainAspectRatio:false, layout:{padding:{top:18}},
+      plugins:{legend:{position:'bottom'}, tooltip: tooltipEUR},
       scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
         ticks:{callback: v => `€${v.toFixed(2)}`}} } }
   });
