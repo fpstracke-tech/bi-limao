@@ -88,17 +88,42 @@ def parse_table(text: str, years: list) -> list[dict]:
                         values[yr] = None
             rows.append({"week": week_num, "values": values})
         elif line.lower() == "total":
-            # Pegar totais
-            totals = {}
-            i += 1  # pular linha de anos repetida
+            # A linha de valores NÃO vem sempre logo depois de "Total": em alguns
+            # renders há um cabeçalho de anos repetido no meio, em outros não.
+            # O `i += 1` fixo que existia aqui pulava o primeiro valor e acabava
+            # lendo os RÓTULOS de ano — foi assim que 2025/2024 foram gravados
+            # como se fossem os totais da temporada (30/07/2026).
+            # Agora varre à frente colhendo os primeiros valores plausíveis e
+            # ignora tokens que são rótulo de ano.
+            achados = []
+            j, limite = i + 1, min(len(lines), i + 15)
+            while j < limite and len(achados) < len(header_years):
+                tok = lines[j].replace(',', '.').strip()
+                j += 1
+                if tok == '-':
+                    achados.append(None)
+                    continue
+                try:
+                    v = float(tok)
+                except ValueError:
+                    continue                       # texto solto no meio: ignora
+                if v.is_integer() and int(v) in header_years:
+                    continue                       # é o rótulo do ano
+                achados.append(v)
+
+            totals = {yr: (achados[k] if k < len(achados) else None)
+                      for k, yr in enumerate(header_years)}
+
+            # Validação: o total do ano não pode ser MENOR que a soma das
+            # semanas que acabamos de parsear. Se for, o parse saiu do lugar —
+            # melhor gravar None do que um número errado com cara de certo.
             for yr in header_years:
-                i += 1
-                if i < len(lines):
-                    val_str = lines[i].replace(',', '.').strip()
-                    try:
-                        totals[yr] = float(val_str) if val_str != '-' else None
-                    except ValueError:
-                        totals[yr] = None
+                soma = sum(r["values"].get(yr) or 0 for r in rows)
+                if totals[yr] is not None and totals[yr] < soma:
+                    print(f"    ⚠️  TOTAL {yr} = {totals[yr]} < soma das semanas ({soma}) — descartado")
+                    print(f"        contexto do DOM: {lines[i:i+8]}")
+                    totals[yr] = None
+
             rows.append({"week": "TOTAL", "values": totals})
             break
         i += 1
@@ -135,6 +160,33 @@ def wait_for_table(page, timeout=10):
         return True
     except PwTimeout:
         return False
+
+
+def wait_for_table_stable(page, timeout=20, quieto=1.2):
+    """
+    Aguarda a tabela PARAR DE MUDAR, não apenas existir.
+
+    Por que isso importa: depois de trocar um filtro, a tabela antiga continua
+    no DOM por alguns instantes. `wait_for_table` já encontra 'WK ' nesse
+    intervalo e o ETL captura o render ANTERIOR — dados de outro recorte,
+    gravados como se fossem do filtro pedido. Foi o que aconteceu em
+    30/07/2026: nenhum valor batia com a fonte e nenhum deslocamento de semana
+    explicava, porque simplesmente era outra série.
+
+    Lê o texto, espera, lê de novo, e só devolve quando duas leituras
+    consecutivas forem idênticas.
+    """
+    if not wait_for_table(page, timeout=timeout):
+        return None
+    anterior, limite = None, time.time() + timeout
+    while time.time() < limite:
+        atual = page.inner_text("body")
+        if atual == anterior:
+            return atual
+        anterior = atual
+        time.sleep(quieto)
+    print(f"    ⚠️  Tabela não estabilizou em {timeout}s — capturando último estado")
+    return anterior
 
 
 # ── EXTRAÇÃO PRINCIPAL ────────────────────────────────────────────────────────
@@ -182,15 +234,21 @@ def extract_all(page) -> list[dict]:
             print(f"    ⚠️  Erro ao selecionar {flow}: {e}")
             continue
 
-        # Aguardar tabela renderizar
-        if not wait_for_table(page, timeout=10):
+        # Aguardar a tabela ESTABILIZAR, não só aparecer — ver docstring de
+        # wait_for_table_stable.
+        body_text = wait_for_table_stable(page, timeout=20)
+        if not body_text:
             print(f"    ⚠️  Tabela não carregou para {flow}")
             continue
 
-        # Extrair texto da página e parsear
-        body_text = page.inner_text("body")
         rows = parse_table(body_text, YEARS)
-        print(f"    {len([r for r in rows if r['week'] != 'TOTAL'])} semanas + total")
+        semanas = [r for r in rows if r["week"] != "TOTAL"]
+        print(f"    {len(semanas)} semanas + total")
+
+        # Amostra no log: barata e é a única forma de auditar depois se o run
+        # pegou o recorte certo (o print do relatório serve de gabarito).
+        for r in semanas[:3]:
+            print(f"      WK {r['week']}: " + " | ".join(f"{y}={r['values'].get(y)}" for y in YEARS))
 
         for row in rows:
             for year, value in row["values"].items():
