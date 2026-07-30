@@ -43,15 +43,20 @@ except ImportError:
     HAS_TQDM = False
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
+# ANO dinâmico: a ODEPA publica um CSV por ano civil. Com o ano fixo no código o
+# ETL continuaria baixando o ano anterior a partir de 1º de janeiro — rodaria
+# "com sucesso" e os preços parariam de atualizar silenciosamente.
+ANO = date.today().year
+
 URL = (
     "https://datos.odepa.gob.cl/dataset/33f10516-acbe-4446-b633-68244b9b6b26"
     "/resource/580beca0-e87e-4dd4-9e8a-0bd92773f4a6"
-    "/download/precio_mayorista_fruta-hortaliza_2026.csv"
+    f"/download/precio_mayorista_fruta-hortaliza_{ANO}.csv"
 )
 
 PASTA_LOCAL = r"C:\Users\fpstr\ownCloud\TFruits PowerBI\Projeto Report Limão\Chile"
-ARQ_RAW     = os.path.join(PASTA_LOCAL, "odepa_raw_2026.csv")
-ARQ_EXCEL   = os.path.join(PASTA_LOCAL, "2026.xlsx")
+ARQ_RAW     = os.path.join(PASTA_LOCAL, f"odepa_raw_{ANO}.csv")
+ARQ_EXCEL   = os.path.join(PASTA_LOCAL, f"{ANO}.xlsx")
 OUTPUT_CSV  = "odepa_limon.csv"
 
 
@@ -96,7 +101,7 @@ def baixar_arquivo(url: str, destino: str = None, tentativas: int = 4) -> bytes:
     chunks = []
     if HAS_TQDM and destino:
         with open(destino, "wb") as f, tqdm(
-            total=total, unit="B", unit_scale=True, desc="Baixando CSV ODEPA 2026"
+            total=total, unit="B", unit_scale=True, desc=f"Baixando CSV ODEPA {ANO}"
         ) as bar:
             for chunk in resp.iter_content(chunk_size=1024 * 1024):
                 if chunk:
@@ -280,7 +285,7 @@ def main():
     extracted_at = datetime.now(timezone.utc).isoformat()
 
     # Download
-    print("\n[1] Baixando CSV ODEPA 2026...")
+    print(f"\n[1] Baixando CSV ODEPA {ANO}...")
     destino = ARQ_RAW if Path(PASTA_LOCAL).exists() else None
     data = baixar_arquivo(URL, destino)
     if destino:
