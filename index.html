@@ -139,6 +139,9 @@
   .kpi-label  { font-size: .65rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); margin-bottom: .5rem; }
   .kpi-value  { font-size: 1.6rem; font-weight: 700; color: var(--text); line-height: 1; word-break: break-word; }
   .kpi-value-sm { font-size: 1rem !important; line-height: 1.3; }
+  /* Códigos (NCM, etc.): nunca quebram linha — "0805.50.00" partido em duas
+     linhas deixa de ser um código legível. */
+  .kpi-value-code { font-size: 1.25rem !important; white-space: nowrap; word-break: normal; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
   .kpi-unit   { font-size: .7rem; color: var(--text-2); margin-top: .2rem; }
   .kpi-trend  { display: inline-flex; align-items: center; gap: .2rem; font-size: .65rem; font-weight: 600; margin-top: .4rem; padding: .15rem .4rem; border-radius: 99px; }
   .kpi-trend.up   { color: var(--green); background: var(--green-dim); }
@@ -184,19 +187,40 @@
   table.table-mes td, table.table-mes th { border-right: 1px solid rgba(255,255,255,.05); }
   table.table-mes .col-mes { text-align: right; font-variant-numeric: tabular-nums; padding-left: .55rem; padding-right: .8rem; }
   table.table-mes .col-mes-vazio { color: var(--text-3); }
+  /* Diferenciação das colunas de mês, em duas camadas:
+     1. faixa zebrada vertical em meses alternados (a coluna vira um bloco);
+     2. divisor mais forte no fim de cada trimestre (Mar/Jun/Set/Dez). */
+  table.table-mes .col-zebra { background: rgba(255,255,255,.032); }
+  table.table-mes thead .col-zebra { background: rgba(255,255,255,.05); }
+  table.table-mes .col-tri { border-right: 1px solid rgba(255,255,255,.16); }
+  /* O hover da linha tem que vencer a zebra, senão a leitura horizontal some. */
+  table.table-mes tr:hover td.col-mes,
+  table.table-mes tr:hover td.col-total { background: var(--green-dim); color: var(--text); }
+  /* Mês em foco: passar o mouse no número acende a coluna inteira. */
+  table.table-mes th.col-mes { cursor: default; transition: color .15s, background .15s; }
+  table.table-mes th.col-mes.mes-on { color: var(--green); background: var(--green-dim); }
+  table.table-mes td.col-mes.mes-on { background: var(--green-dim); color: var(--text); }
   table.table-mes .col-pais {
-    position: sticky; left: 0; z-index: 2; background: var(--surface);
+    position: sticky; left: 0; z-index: 2; background: var(--surface2);
     font-weight: 500; color: var(--text); max-width: 190px; overflow: hidden; text-overflow: ellipsis;
   }
-  table.table-mes thead .col-pais { background: var(--surface); }
+  table.table-mes thead .col-pais { background: var(--surface2); }
   table.table-mes tr:hover .col-pais { background: var(--green-dim); }
   table.table-mes .col-total { text-align: right; border-right: none; background: rgba(255,255,255,.02); }
-  table.table-mes .col-rank { color: var(--text-3); font-variant-numeric: tabular-nums; padding-right: 0; border-right: none; width: 1.6rem; }
+  /* Posição vive dentro da célula do país: assim a coluna ancorada na rolagem
+     é uma só (duas colunas sticky lado a lado se sobrepõem). */
+  table.table-mes .pais-rank {
+    display: inline-block; width: 1.1rem; margin-right: .45rem;
+    color: var(--text-3); font-variant-numeric: tabular-nums; font-weight: 400;
+  }
   .chart-note { font-size: .65rem; color: var(--text-3); margin-top: .7rem; line-height: 1.5; }
   table.table-mes tfoot td {
     border-top: 1px solid var(--border); border-bottom: none;
     color: var(--text); font-weight: 600; background: rgba(255,255,255,.02);
   }
+  /* A célula sticky não pode ser translúcida (as colunas passariam por baixo);
+     #1D221D = --surface2 já com o clareamento de 2% do rodapé aplicado. */
+  table.table-mes tfoot .col-pais { background: #1D221D; }
 
   /* ── TABS (page navigation) ──────────────────────────────────── */
   .page { display: none; }
@@ -1019,7 +1043,7 @@ function renderKpis(containerId, kpis) {
     <div class="card-shell" style="animation-delay:${i * .06}s">
       <div class="card-inner">
         <div class="kpi-label">${k.label}</div>
-        <div class="kpi-value ${String(k.value).length > 8 ? 'kpi-value-sm' : ''}">${k.value}</div>
+        <div class="kpi-value ${k.code ? 'kpi-value-code' : (String(k.value).length > 8 ? 'kpi-value-sm' : '')}">${k.value}</div>
         <div class="kpi-unit">${k.unit || ''}</div>
         ${k.trend != null ? `<div class="kpi-trend ${k.trend >= 0 ? 'up' : 'down'}">${k.trend >= 0 ? '▲' : '▼'} ${Math.abs(k.trend).toFixed(1)}%</div>` : ''}
       </div>
@@ -1882,7 +1906,7 @@ async function loadShare() {
     { label: `Containers exportados ${curAno}`, value: totalCont.toLocaleString('pt-BR'), unit: 'cont. 40\' (23.760 kg)' },
     { label: `USD FOB ${curAno}`, value: '$'+(totalUSD/1e6).toFixed(1)+'M', unit: 'valor FOB' },
     { label: 'Países destino', value: paises, unit: `em ${curAno}` },
-    { label: 'NCM', value: '08055000', unit: 'Limão Tahiti' },
+    { label: 'NCM', value: '0805.50.00', unit: 'Limão Tahiti', code: true },
   ]);
 
   // Bar — top 10 por containers
@@ -1955,21 +1979,25 @@ async function loadShare() {
     const contTotalAno = kgToCont(totalAno);
     const nf = n => n.toLocaleString('pt-BR');
 
+    // Zebra em meses pares + divisor de trimestre em Mar/Jun/Set/Dez.
+    // data-mes alimenta o realce de coluna no hover.
+    const clsMes = m => `col-mes${m % 2 === 0 ? ' col-zebra' : ''}${m % 3 === 0 ? ' col-tri' : ''}`;
+
     const t = document.getElementById('share-table');
     t.querySelector('thead').innerHTML =
-      `<tr><th class="col-rank"></th><th class="col-pais">País</th>` +
-      meses.map(m=>`<th class="col-mes">${MESES_LABEL[m-1]}</th>`).join('') +
+      `<tr><th class="col-pais">País</th>` +
+      meses.map(m=>`<th class="${clsMes(m)}" data-mes="${m}">${MESES_LABEL[m-1]}</th>`).join('') +
       `<th class="col-total">Total</th><th class="col-total">Share</th></tr>`;
 
     t.querySelector('tbody').innerHTML = linhas.map(({p, tot})=>{
       const cels = meses.map(m=>{
         const kg = kgPaisMes[`${p}|${m}`];
         return kg
-          ? `<td class="col-mes">${nf(kgToCont(kg))}</td>`
-          : `<td class="col-mes col-mes-vazio">—</td>`;
+          ? `<td class="${clsMes(m)}" data-mes="${m}">${nf(kgToCont(kg))}</td>`
+          : `<td class="${clsMes(m)} col-mes-vazio" data-mes="${m}">—</td>`;
       }).join('');
       const share = totalAno ? (tot/totalAno*100) : 0;
-      return `<tr><td class="col-rank">${rank[p]}</td><td class="col-pais" title="${p}">${p}</td>${cels}` +
+      return `<tr><td class="col-pais" title="${p}"><span class="pais-rank">${rank[p]}</span>${p}</td>${cels}` +
              `<td class="col-total"><span class="badge">${nf(kgToCont(tot))}</span></td>` +
              `<td class="col-total">${share.toFixed(1).replace('.',',')}%</td></tr>`;
     }).join('');
@@ -1978,9 +2006,22 @@ async function loadShare() {
     // é o número que fecha com o KPI e com o Total Containers do Power BI.
     const kgMesTodos = m => doAno.filter(d=>d.mes===m).reduce((s,d)=>s+ +d.kg_liquido,0);
     t.querySelector('tfoot').innerHTML =
-      `<tr><td class="col-rank"></td><td class="col-pais">Total ${ano} (todos)</td>` +
-      meses.map(m=>`<td class="col-mes">${nf(kgToCont(kgMesTodos(m)))}</td>`).join('') +
+      `<tr><td class="col-pais"><span class="pais-rank"></span>Total ${ano} (todos)</td>` +
+      meses.map(m=>`<td class="${clsMes(m)}" data-mes="${m}">${nf(kgToCont(kgMesTodos(m)))}</td>`).join('') +
       `<td class="col-total">${nf(contTotalAno)}</td><td class="col-total">100,0%</td></tr>`;
+
+    // Realce de coluna: um listener no <table>, não um por célula.
+    if (!t.dataset.hoverBound) {
+      t.addEventListener('mouseover', e => {
+        const cel = e.target.closest('[data-mes]');
+        const m = cel ? cel.dataset.mes : null;
+        t.querySelectorAll('.mes-on').forEach(x => x.classList.remove('mes-on'));
+        if (m) t.querySelectorAll(`[data-mes="${m}"]`).forEach(x => x.classList.add('mes-on'));
+      });
+      t.addEventListener('mouseleave', () =>
+        t.querySelectorAll('.mes-on').forEach(x => x.classList.remove('mes-on')));
+      t.dataset.hoverBound = '1';
+    }
 
     const somaTop = top.reduce((s,x)=>s+x.tot, 0);
     document.getElementById('share-table-note').textContent =
