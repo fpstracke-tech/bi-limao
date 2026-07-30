@@ -190,8 +190,7 @@
   /* Diferenciação das colunas de dado (mês na aba Share, ano na Containers):
      1. faixa zebrada vertical alternada (a coluna vira um bloco);
      2. divisor mais forte marcando fim de trimestre (Mar/Jun/Set/Dez).
-     .col-linha destaca a semana corrente na comparativa de containers. */
-  table.table-mes .col-linha { color: var(--green) !important; font-weight: 600; }
+     O destaque da semana de referência fica em `tr.linha-ref`, mais abaixo. */
   table.table-mes .col-zebra { background: rgba(255,255,255,.032); }
   table.table-mes thead .col-zebra { background: rgba(255,255,255,.05); }
   table.table-mes .col-tri { border-right: 1px solid rgba(255,255,255,.16); }
@@ -225,10 +224,16 @@
 
   /* Containers: tabela à esquerda no tamanho que precisa, resumo da temporada
      ocupando o espaço que sobra — mesmo arranjo do relatório da fonte. */
-  /* Tabela no tamanho que precisa à esquerda, resumo ocupando o resto. O
-     max-width evita o resumo virar uma faixa gigante vazia em tela ultrawide. */
-  .cont-layout { display: grid; grid-template-columns: minmax(0,auto) minmax(300px,1fr); gap: 1rem; align-items: start; max-width: 1280px; }
-  @media (max-width: 1100px) { .cont-layout { grid-template-columns: 1fr; } }
+  /* Resumo em cima ocupando a largura, tabela embaixo com o card abraçando o
+     conteúdo — esticar o card da tabela deixaria uma faixa vazia à direita. */
+  .cont-layout { display: flex; flex-direction: column; gap: 1rem; align-items: flex-start; max-width: 1280px; }
+  .cont-layout > .card-resumo { width: 100%; }
+  .cont-layout > .card-tabela { width: fit-content; max-width: 100%; }
+
+  /* Semana de referência: a mesma que o resumo está usando. Linha inteira
+     destacada, como no relatório da fonte. */
+  table.table-mes tr.linha-ref td { background: var(--green-dim); color: var(--text); }
+  table.table-mes tr.linha-ref .col-pais { background: rgba(76,174,79,.18); color: var(--green); font-weight: 600; }
   /* Resumo como tabela, e não como cards soltos: os anos precisam ficar
      alinhados em coluna para comparar de bater o olho, igual ao relatório. */
   table.resumo { width: 100%; border-collapse: collapse; }
@@ -673,7 +678,17 @@
         <div class="page-sub">Chegadas e embarques por semana — Brasil → Europa (Med. + N. Europe + UK)</div>
       </div>
       <div class="cont-layout">
-        <div class="card-shell">
+        <div class="card-shell card-resumo">
+          <div class="card-inner">
+            <div class="chart-header" style="margin-bottom:.4rem">
+              <span class="chart-title">Resumo da temporada</span>
+              <select class="styled-select" id="cont-resumo-semana"></select>
+            </div>
+            <div id="cont-resumo"></div>
+            <div class="chart-note" id="cont-comp-note"></div>
+          </div>
+        </div>
+        <div class="card-shell card-tabela">
           <div class="card-inner">
             <div class="chart-header" style="margin-bottom:.8rem">
               <span class="chart-title">Containers por semana</span>
@@ -683,16 +698,6 @@
               </select>
             </div>
             <div class="table-wrap"><table id="cont-table-comp" class="table-mes table-compacta"><thead></thead><tbody></tbody><tfoot></tfoot></table></div>
-          </div>
-        </div>
-        <div class="card-shell">
-          <div class="card-inner">
-            <div class="chart-header" style="margin-bottom:.4rem">
-              <span class="chart-title">Resumo da temporada</span>
-              <select class="styled-select" id="cont-resumo-semana"></select>
-            </div>
-            <div id="cont-resumo"></div>
-            <div class="chart-note" id="cont-comp-note"></div>
           </div>
         </div>
       </div>
@@ -2119,23 +2124,25 @@ async function loadContainers() {
 
   const selSemana = document.getElementById('cont-resumo-semana');
 
-  function renderResumo(flow) {
-    // Semanas com dado na temporada corrente — são as que fazem sentido como
-    // referência (as futuras estão vazias).
+  // Popula o seletor e devolve a semana de referência. Fica fora do render
+  // porque o destaque da linha na tabela usa a MESMA semana — trocar no
+  // seletor move o resumo e o destaque juntos.
+  function sincronizaSemanaRef(flow) {
     const comDado = data
       .filter(d => d.flow === flow && d.year === curAno && d.total_containers != null)
       .map(d => d.week).sort((a,b) => a - b);
     const fechadas = comDado.filter(w => w <= semanaISO - 1);
     const padrao = fechadas.length ? Math.max(...fechadas)
                  : (comDado.length ? Math.max(...comDado) : ultSem);
-
     const anterior = +selSemana.value;
     const opcoes = comDado.length ? comDado : semanasBase;
     selSemana.innerHTML = [...opcoes].reverse()
       .map(w => `<option value="${w}">Semana S${w}</option>`).join('');
     selSemana.value = opcoes.includes(anterior) ? anterior : padrao;
-    const semRef = +selSemana.value;
+    return +selSemana.value;
+  }
 
+  function renderResumo(flow, semRef) {
     const acum = ano => {
       const vs = data.filter(d => d.flow === flow && d.year === ano
                               && d.week <= semRef && d.total_containers != null);
@@ -2178,7 +2185,7 @@ async function loadContainers() {
                 : '<strong>Temporada completa indisponível</strong>: o ETL não gravou a linha TOTAL.');
   }
 
-  function drawContComp(flow) {
+  function drawContComp(flow, semRef) {
     const src = data.filter(d => d.flow === flow);
     const porAnoSem = {};
     src.forEach(d => { porAnoSem[`${d.year}|${d.week}`] = d.total_containers; });
@@ -2206,8 +2213,11 @@ async function loadContainers() {
         const v = porAnoSem[`${a}|${w}`];
         return `<td class="${clsAno(a,i)}${v==null?' col-mes-vazio':''}" data-mes="${a}">${nfCont(v)}</td>`;
       }).join('');
-      const ehAtual = w === semanaISO;
-      return `<tr><td class="col-pais${ehAtual?' col-linha':''}">S${w}${ehAtual?' •':''}</td>${cels}<td class="col-total">${deltaTxt}</td></tr>`;
+      // Destaque na semana de referência (a mesma do resumo), não na semana
+      // corrente do calendário: a corrente ainda está aberta e não é a que a
+      // fonte destaca.
+      const ehRef = w === semRef;
+      return `<tr${ehRef ? ' class="linha-ref"' : ''}><td class="col-pais">S${w}</td>${cels}<td class="col-total">${deltaTxt}</td></tr>`;
     }).join('');
 
     // Rodapé: TOTAL do ano da fonte quando disponível; senão soma parcial das
@@ -2243,9 +2253,14 @@ async function loadContainers() {
   }
 
   const selFlow = document.getElementById('cont-comp-flow');
-  const desenhar = () => { drawContComp(selFlow.value); renderResumo(selFlow.value); };
+  const desenhar = () => {
+    const flow   = selFlow.value;
+    const semRef = sincronizaSemanaRef(flow);
+    renderResumo(flow, semRef);
+    drawContComp(flow, semRef);
+  };
   selFlow.addEventListener('change', desenhar);
-  selSemana.addEventListener('change', () => renderResumo(selFlow.value));
+  selSemana.addEventListener('change', desenhar);
   desenhar();
 }
 
