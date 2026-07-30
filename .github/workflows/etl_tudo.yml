@@ -1,0 +1,66 @@
+name: Atualizar tudo — manual
+
+# Botão de emergência: dispara TODOS os ETLs de uma vez.
+# Uso típico: antes de reunião ou apresentação, quando não se quer esperar o
+# agendamento de cada fonte.
+#
+# Não tem `schedule` de propósito — os workflows individuais já têm a cadência
+# certa para cada fonte (clima diário/alternado, containers dias úteis, preços
+# semanal, Comexstat mensal). Agendar este aqui duplicaria execuções.
+#
+# Dispara via `gh workflow run` em vez de replicar os steps: assim existe uma
+# única definição de cada ETL, e o log/issue de falha continua no workflow dele.
+
+on:
+  workflow_dispatch:
+    inputs:
+      incluir_mensal:
+        description: 'Incluir Comexstat (mensal — dados só mudam uma vez por mês)'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  disparar:
+    name: Disparar ETLs
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write        # necessário para o gh workflow run
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Clima Global (OpenWeatherMap)
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh workflow run etl_clima_global.yml --ref ${{ github.ref_name }}
+
+      - name: Clima Local (HG Brasil)
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh workflow run etl_clima.yml --ref ${{ github.ref_name }}
+
+      - name: Containers (Aschenberg)
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh workflow run etl_containers.yml --ref ${{ github.ref_name }}
+
+      - name: Preços Brasil + Chile + Europa
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh workflow run etl_semanal.yml --ref ${{ github.ref_name }}
+
+      - name: Comexstat (só se pedido)
+        if: ${{ inputs.incluir_mensal }}
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh workflow run etl_mensal.yml --ref ${{ github.ref_name }}
+
+      - name: Resumo
+        run: |
+          echo "### ETLs disparados" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Clima Global" >> $GITHUB_STEP_SUMMARY
+          echo "- Clima Local" >> $GITHUB_STEP_SUMMARY
+          echo "- Containers" >> $GITHUB_STEP_SUMMARY
+          echo "- Preços Brasil / Chile / Europa" >> $GITHUB_STEP_SUMMARY
+          echo "- Comexstat: ${{ inputs.incluir_mensal }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Acompanhe cada um na aba Actions. O dashboard reflete assim que o ETL termina." >> $GITHUB_STEP_SUMMARY

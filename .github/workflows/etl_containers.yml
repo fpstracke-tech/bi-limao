@@ -1,0 +1,69 @@
+name: ETL Containers — dias úteis
+
+# Roda de segunda a sexta porque a fonte NÃO apenas acrescenta semanas: ela
+# revisa continuamente a semana em curso. Em 30/07/2026 a S31 saiu de 157 para
+# 284 containers em três dias, e a aba mostrava o número velho.
+# Separado do ETL semanal de preços de propósito — Cepea, ODEPA e FranceAgriMer
+# publicam uma vez por semana, rodar diário lá não traria dado novo.
+
+on:
+  schedule:
+    - cron: '0 12 * * 1-5'   # Seg a sex às 09:00 BRT (12:00 UTC)
+  workflow_dispatch:
+
+jobs:
+  etl-containers:
+    name: Containers (Aschenberg)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      issues: write
+      contents: read
+
+    env:
+      SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY:      ${{ secrets.SUPABASE_KEY }}
+      ASCHENBERG_USER:   ${{ secrets.ASCHENBERG_USER }}
+      ASCHENBERG_PASS:   ${{ secrets.ASCHENBERG_PASS }}
+      PYTHONIOENCODING:  utf-8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependências
+        run: pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Instalar Playwright
+        run: playwright install --with-deps chromium
+
+      - name: ETL Containers (Aschenberg)
+        id: aschenberg
+        run: python etl_aschenberg_playwright.py
+
+      - name: Abrir issue em caso de falha
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `❌ Falha ETL Containers — ${new Date().toISOString().slice(0,16).replace('T',' ')} UTC`;
+            const body = [
+              `**Workflow:** ${context.workflow}`,
+              `**Run:** ${context.runId}`,
+              `**Link:** https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              'O Aschenberg pode ter mudado a estrutura do DOM ou as credenciais expiraram.',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['etl-falha', 'containers'],
+            });

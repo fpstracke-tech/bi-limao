@@ -1,4 +1,4 @@
-name: ETL Semanal — Preços + Containers
+name: ETL Semanal — Preços
 
 on:
   schedule:
@@ -86,60 +86,4 @@ jobs:
               title,
               body,
               labels: ['etl-falha', 'precos'],
-            });
-
-  etl-containers:
-    name: Containers (Aschenberg)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      issues: write
-      contents: read
-
-    env:
-      SUPABASE_URL:      ${{ secrets.SUPABASE_URL }}
-      SUPABASE_KEY:      ${{ secrets.SUPABASE_KEY }}
-      ASCHENBERG_USER:   ${{ secrets.ASCHENBERG_USER }}
-      ASCHENBERG_PASS:   ${{ secrets.ASCHENBERG_PASS }}
-      PYTHONIOENCODING:  utf-8
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Instalar dependências
-        run: pip install --upgrade pip && pip install -r requirements.txt
-
-      - name: Instalar Playwright
-        run: playwright install --with-deps chromium
-
-      - name: ETL Containers (Aschenberg)
-        id: aschenberg
-        run: python etl_aschenberg_playwright.py
-
-      - name: Abrir issue em caso de falha
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const title = `❌ Falha ETL Containers — ${new Date().toISOString().slice(0,16).replace('T',' ')} UTC`;
-            const body = [
-              `**Workflow:** ${context.workflow}`,
-              `**Run:** ${context.runId}`,
-              `**Link:** https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              '',
-              'O Aschenberg pode ter mudado a estrutura do DOM ou as credenciais expiraram.',
-            ].join('\n');
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title,
-              body,
-              labels: ['etl-falha', 'containers'],
             });
