@@ -185,21 +185,24 @@
      Números à direita, régua vertical entre meses, coluna País ancorada na
      rolagem horizontal e coluna Total destacada como fechamento da linha. */
   table.table-mes td, table.table-mes th { border-right: 1px solid rgba(255,255,255,.05); }
-  table.table-mes .col-mes { text-align: right; font-variant-numeric: tabular-nums; padding-left: .55rem; padding-right: .8rem; }
+  table.table-mes .col-mes, table.table-mes .col-num { text-align: right; font-variant-numeric: tabular-nums; padding-left: .55rem; padding-right: .8rem; }
   table.table-mes .col-mes-vazio { color: var(--text-3); }
-  /* Diferenciação das colunas de mês, em duas camadas:
-     1. faixa zebrada vertical em meses alternados (a coluna vira um bloco);
-     2. divisor mais forte no fim de cada trimestre (Mar/Jun/Set/Dez). */
+  /* Diferenciação das colunas de dado (mês na aba Share, ano na Containers):
+     1. faixa zebrada vertical alternada (a coluna vira um bloco);
+     2. divisor mais forte marcando fim de trimestre (Mar/Jun/Set/Dez).
+     .col-linha destaca a semana corrente na comparativa de containers. */
+  table.table-mes .col-linha { color: var(--green) !important; font-weight: 600; }
   table.table-mes .col-zebra { background: rgba(255,255,255,.032); }
   table.table-mes thead .col-zebra { background: rgba(255,255,255,.05); }
   table.table-mes .col-tri { border-right: 1px solid rgba(255,255,255,.16); }
   /* O hover da linha tem que vencer a zebra, senão a leitura horizontal some. */
   table.table-mes tr:hover td.col-mes,
+  table.table-mes tr:hover td.col-num,
   table.table-mes tr:hover td.col-total { background: var(--green-dim); color: var(--text); }
   /* Mês em foco: passar o mouse no número acende a coluna inteira. */
-  table.table-mes th.col-mes { cursor: default; transition: color .15s, background .15s; }
-  table.table-mes th.col-mes.mes-on { color: var(--green); background: var(--green-dim); }
-  table.table-mes td.col-mes.mes-on { background: var(--green-dim); color: var(--text); }
+  table.table-mes th.col-mes, table.table-mes th.col-num { cursor: default; transition: color .15s, background .15s; }
+  table.table-mes th.col-mes.mes-on, table.table-mes th.col-num.mes-on { color: var(--green); background: var(--green-dim); }
+  table.table-mes td.col-mes.mes-on, table.table-mes td.col-num.mes-on { background: var(--green-dim); color: var(--text); }
   table.table-mes .col-pais {
     position: sticky; left: 0; z-index: 2; background: var(--surface2);
     font-weight: 500; color: var(--text); max-width: 190px; overflow: hidden; text-overflow: ellipsis;
@@ -657,6 +660,20 @@
             <div class="chart-header"><span class="chart-title">Histórico Arrivals — containers por ano</span></div>
             <div class="chart-wrap"><canvas id="chartContArrivalsHist"></canvas></div>
           </div>
+        </div>
+      </div>
+      <!-- Comparativo semana × ano (mesmo recorte do relatório da fonte) -->
+      <div class="card-shell" style="margin-bottom:1rem">
+        <div class="card-inner">
+          <div class="chart-header" style="margin-bottom:.8rem">
+            <span class="chart-title">Containers chegando na Europa e UK — semana × ano</span>
+            <select class="styled-select" id="cont-comp-flow">
+              <option value="Arrivals" selected>⚓ Arrivals — chegadas</option>
+              <option value="Shipped">🚢 Shipped — embarques</option>
+            </select>
+          </div>
+          <div class="table-wrap"><table id="cont-table-comp" class="table-mes"><thead></thead><tbody></tbody><tfoot></tfoot></table></div>
+          <div class="chart-note" id="cont-comp-note"></div>
         </div>
       </div>
       <!-- Semanal ano corrente -->
@@ -2042,7 +2059,13 @@ async function loadContainers() {
 
   if (!data.length) { pageError('containers', new Error('Sem dados')); return; }
 
-  data.forEach(d => { d.year = +d.year; d.week = +d.week; d.total_containers = +(d.total_containers||0); });
+  // NULL preservado de propósito: semana futura sem dado é "—", não zero.
+  // Convertê-la em 0 fazia as linhas dos gráficos despencarem para o eixo e a
+  // tabela mostrar zero onde a fonte mostra traço.
+  data.forEach(d => {
+    d.year = +d.year; d.week = +d.week;
+    d.total_containers = d.total_containers == null ? null : +d.total_containers;
+  });
 
   const anos     = [...new Set(data.map(d=>d.year))].sort((a,b)=>a-b);
   const curAno   = Math.max(...anos);
@@ -2051,8 +2074,8 @@ async function loadContainers() {
 
   function renderContKpis(ano) {
     const anoData  = data.filter(d=>d.year===ano);
-    const totShip  = anoData.filter(d=>d.flow==='Shipped').reduce((s,d)=>s+d.total_containers,0);
-    const totArr   = anoData.filter(d=>d.flow==='Arrivals').reduce((s,d)=>s+d.total_containers,0);
+    const totShip  = anoData.filter(d=>d.flow==='Shipped').reduce((s,d)=>s+(d.total_containers||0),0);
+    const totArr   = anoData.filter(d=>d.flow==='Arrivals').reduce((s,d)=>s+(d.total_containers||0),0);
     const weeksWithShipped = anoData.filter(d=>d.flow==='Shipped'&&d.total_containers>0).map(d=>d.week);
     const lastWeek = weeksWithShipped.length ? Math.max(...weeksWithShipped) : Math.max(...anoData.map(d=>d.week));
     const lastShip = anoData.find(d=>d.week===lastWeek&&d.flow==='Shipped')?.total_containers||0;
@@ -2067,6 +2090,98 @@ async function loadContainers() {
   }
 
   renderContKpis(curAno);
+
+  // ── Comparativo semana × ano (recorte do relatório da fonte) ───────
+  // O total do ano vem da linha TOTAL da própria fonte, gravada em
+  // containers_totais. Não é a soma das semanas: a fonte publica uma janela
+  // móvel de ~22 semanas, então o banco nunca tem o ano fechado.
+  let totaisFonte = [];
+  try {
+    totaisFonte = await sbFetch('containers_totais', { select:'flow,year,total_containers' });
+    totaisFonte.forEach(t => { t.year = +t.year; });
+  } catch (e) {
+    console.warn('[containers] containers_totais indisponível — rodar migrate_containers_totais.sql', e);
+  }
+
+  const anosDesc = [...anos].sort((a,b)=>b-a);
+  const semanaISO = (() => {
+    const d = new Date(); d.setHours(0,0,0,0);
+    const q = new Date(d.valueOf());
+    q.setDate(q.getDate() + 3 - ((q.getDay() + 6) % 7));      // quinta da semana ISO
+    const s1 = new Date(q.getFullYear(), 0, 4);
+    return 1 + Math.round(((q - s1) / 86400000 - 3 + ((s1.getDay() + 6) % 7)) / 7);
+  })();
+
+  const nfCont = v => v == null ? '—'
+    : v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+
+  function drawContComp(flow) {
+    const src = data.filter(d => d.flow === flow);
+    const porAnoSem = {};
+    src.forEach(d => { porAnoSem[`${d.year}|${d.week}`] = d.total_containers; });
+    const semanas = [...new Set(src.map(d=>d.week))].sort((a,b)=>a-b);
+
+    const clsAno = (ano, i) => `col-num${i % 2 === 1 ? ' col-zebra' : ''}`;
+    const t = document.getElementById('cont-table-comp');
+
+    t.querySelector('thead').innerHTML =
+      `<tr><th class="col-pais">Semana</th>` +
+      anosDesc.map((a,i)=>`<th class="${clsAno(a,i)}" data-mes="${a}">${a}</th>`).join('') +
+      `<th class="col-total">Δ ${anosDesc[0]} vs ${anosDesc[1]}</th></tr>`;
+
+    t.querySelector('tbody').innerHTML = semanas.map(w => {
+      const atual = porAnoSem[`${anosDesc[0]}|${w}`];
+      const ant   = porAnoSem[`${anosDesc[1]}|${w}`];
+      // Δ em containers, não em %: a fonte tem semanas com 5 containers e a
+      // variação percentual estouraria para +4.000%, dominando a leitura.
+      // O % fica no title, para quem quiser.
+      const delta = (atual != null && ant != null) ? atual - ant : null;
+      const pct   = (delta != null && ant) ? ` (${delta>=0?'+':''}${(delta/ant*100).toFixed(0)}%)` : '';
+      const deltaTxt = delta == null ? '<span style="color:var(--text-3)">—</span>'
+        : `<span style="color:${delta>=0?'var(--green)':'#EF5350'}" title="${anosDesc[0]} vs ${anosDesc[1]}${pct}">${delta>=0?'+':''}${nfCont(delta)}</span>`;
+      const cels = anosDesc.map((a,i) => {
+        const v = porAnoSem[`${a}|${w}`];
+        return `<td class="${clsAno(a,i)}${v==null?' col-mes-vazio':''}" data-mes="${a}">${nfCont(v)}</td>`;
+      }).join('');
+      const ehAtual = w === semanaISO;
+      return `<tr><td class="col-pais${ehAtual?' col-linha':''}">S${w}${ehAtual?' •':''}</td>${cels}<td class="col-total">${deltaTxt}</td></tr>`;
+    }).join('');
+
+    // Rodapé: TOTAL do ano da fonte quando disponível; senão soma parcial das
+    // semanas em banco, com o rótulo dizendo que é parcial (não engana).
+    const totFonte = {};
+    totaisFonte.filter(x=>x.flow===flow).forEach(x => { totFonte[x.year] = x.total_containers==null?null:+x.total_containers; });
+    const temFonte = anosDesc.some(a => totFonte[a] != null);
+    const somaSem  = a => src.filter(d=>d.year===a).reduce((s,d)=>s+(d.total_containers||0),0);
+    const rotulo   = temFonte
+      ? 'Total do ano'
+      : `Total S${semanas[0]}–S${semanas[semanas.length-1]} (parcial)`;
+
+    t.querySelector('tfoot').innerHTML =
+      `<tr><td class="col-pais">${rotulo}</td>` +
+      anosDesc.map((a,i)=>`<td class="${clsAno(a,i)}" data-mes="${a}">${nfCont(temFonte ? totFonte[a] : somaSem(a))}</td>`).join('') +
+      `<td class="col-total"></td></tr>`;
+
+    document.getElementById('cont-comp-note').textContent = temFonte
+      ? `Total do ano informado pela fonte — não é a soma das semanas acima, que cobrem apenas S${semanas[0]} a S${semanas[semanas.length-1]}. Semana corrente: S${semanaISO}.`
+      : `Total parcial: soma das semanas S${semanas[0]} a S${semanas[semanas.length-1]} em base. Para o total do ano inteiro (o número do Power BI), rodar migrate_containers_totais.sql e o ETL Aschenberg. Semana corrente: S${semanaISO}.`;
+
+    if (!t.dataset.hoverBound) {
+      t.addEventListener('mouseover', e => {
+        const cel = e.target.closest('[data-mes]');
+        const m = cel ? cel.dataset.mes : null;
+        t.querySelectorAll('.mes-on').forEach(x => x.classList.remove('mes-on'));
+        if (m) t.querySelectorAll(`[data-mes="${m}"]`).forEach(x => x.classList.add('mes-on'));
+      });
+      t.addEventListener('mouseleave', () =>
+        t.querySelectorAll('.mes-on').forEach(x => x.classList.remove('mes-on')));
+      t.dataset.hoverBound = '1';
+    }
+  }
+
+  const selFlow = document.getElementById('cont-comp-flow');
+  selFlow.addEventListener('change', () => drawContComp(selFlow.value));
+  drawContComp(selFlow.value);
 
   // ── Histórico Shipped — uma linha por ano
   const allWeeks = [...new Set(data.map(d=>d.week))].sort((a,b)=>a-b);

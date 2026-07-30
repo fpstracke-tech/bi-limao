@@ -310,6 +310,30 @@ def main():
             print(f"    Supabase: {result['inserted']} registros inseridos")
             if result["errors"]:
                 print(f"    ⚠️  Erros: {result['errors']}")
+
+            # ── Linha TOTAL → tabela própria ───────────────────────────
+            # É o total do ANO INTEIRO calculado pela fonte. A fonte só exibe
+            # uma janela móvel de ~22 semanas, então somar `containers` nunca
+            # reproduz esse número — é ele que fecha com o Power BI.
+            # Tabela separada porque week=NULL na chave de conflito de
+            # `containers` faria o Postgres re-inserir a cada run
+            # (NULL <> NULL não gera conflito).
+            totais = [{
+                "flow":             r["flow"],
+                "from_zone":        r["from_zone"],
+                "to_zone":          r["to_zone"],
+                "year":             r["year"],
+                "total_containers": r["containers"],
+                "extracted_at":     r["extracted_at"],
+            } for r in all_data if r["week"] == "TOTAL"]
+            if totais:
+                rt = upsert("containers_totais", totais,
+                            on_conflict="flow,from_zone,to_zone,year")
+                print(f"    Supabase (totais): {rt['inserted']} registros")
+                if rt["errors"]:
+                    print(f"    ⚠️  Erros (totais): {rt['errors']}")
+            else:
+                print("    ⚠️  Nenhuma linha TOTAL encontrada no parse")
         except Exception as e:
             print(f"    ⚠️  Supabase skipped: {e}")
 
