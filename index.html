@@ -1035,12 +1035,21 @@ function drawBrasilUlt4sem(data, regioes, curAno) {
   const curData = data.filter(d => d.ano === curAno);
   const semanas = [...new Set(curData.map(d => d.semana))].sort((a,b)=>b-a).slice(0,4).reverse();
   const labels  = semanas.map(s => `Sem ${s}`);
-  const datasets = [
-    barDs('Média das regiões', semanas.map(s => {
-      const rows = curData.filter(d => d.semana === s);
-      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(2) : 0;
-    }), PALETTE[0])
-  ];
+  const valores = semanas.map(s => {
+    const rows = curData.filter(d => d.semana === s);
+    return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(2) : 0;
+  });
+  // Última semana em verde escuro pra destacar o preço mais recente
+  const VERDE_ESCURO = '#1B5E20';
+  const bgColors     = valores.map((_, i) => i === valores.length - 1 ? VERDE_ESCURO : PALETTE[0] + 'BB');
+  const bordColors   = valores.map((_, i) => i === valores.length - 1 ? VERDE_ESCURO : PALETTE[0]);
+  const datasets = [{
+    label: 'Média das regiões',
+    data: valores,
+    backgroundColor: bgColors,
+    borderColor: bordColors,
+    borderWidth: 1, borderRadius: 6, borderSkipped: false
+  }];
   mkChart('chartBrasilUlt4sem', {
     type: 'bar',
     data: { labels, datasets },
