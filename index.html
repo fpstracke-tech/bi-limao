@@ -219,16 +219,15 @@
 
   /* Tabela que abraça o conteúdo em vez de esticar até a borda do card.
      Com 4 colunas curtas, `width: 100%` gerava colunas enormes e vazias. */
-  table.table-compacta { width: auto; }
   table.table-compacta th, table.table-compacta td { padding-left: 1rem; padding-right: 1rem; }
 
   /* Containers: tabela à esquerda no tamanho que precisa, resumo da temporada
      ocupando o espaço que sobra — mesmo arranjo do relatório da fonte. */
-  /* Resumo em cima ocupando a largura, tabela embaixo com o card abraçando o
-     conteúdo — esticar o card da tabela deixaria uma faixa vazia à direita. */
-  .cont-layout { display: flex; flex-direction: column; gap: 1rem; align-items: flex-start; max-width: 1280px; }
-  .cont-layout > .card-resumo { width: 100%; }
-  .cont-layout > .card-tabela { width: fit-content; max-width: 100%; }
+  /* Resumo em cima, tabela embaixo, MESMA largura. Cards de larguras
+     diferentes empilhados ficam desproporcionais; a coluna é estreita o
+     suficiente para as 5 colunas da tabela não virarem faixas vazias. */
+  .cont-layout { display: flex; flex-direction: column; gap: 1rem; max-width: 900px; }
+  .cont-layout > .card-shell { width: 100%; }
 
   /* Semana de referência: a mesma que o resumo está usando. Linha inteira
      destacada, como no relatório da fonte. */
@@ -2160,8 +2159,12 @@ async function loadContainers() {
       { rot: 'Temporada completa', val: a => totalFonte(flow, a) },
     ];
 
-    const cabecalho = `<tr><th></th>` + anosDesc.map((a,i) =>
-      `<th class="col-num${i%2===1?' resumo-zebra':''}" colspan="2">${a}</th>`).join('') + `</tr>`;
+    // Ano alinhado sobre a COLUNA DO NÚMERO, não sobre o par número+variação:
+    // com colspan o rótulo caía no meio do vão e ficava ambíguo de qual ano é.
+    const cabecalho = `<tr><th></th>` + anosDesc.map((a,i) => {
+      const z = i % 2 === 1 ? ' resumo-zebra' : '';
+      return `<th class="col-num${z}">${a}</th><th class="col-num${z}"></th>`;
+    }).join('') + `</tr>`;
 
     const corpo = linhas.map(({rot, val, semDelta}) => {
       const cels = anosDesc.map((a, i) => {
