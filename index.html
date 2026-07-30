@@ -344,7 +344,7 @@
         <div class="card-shell chart-card">
           <div class="card-inner">
             <div class="chart-header">
-              <span class="chart-title">Evolução Semanal por Região</span>
+              <span class="chart-title">Evolução Semanal por Ano — R$/cx 4,5kg</span>
               <div class="filter-bar" id="brasil-filter"></div>
             </div>
             <div class="chart-wrap"><canvas id="chartBrasil"></canvas></div>
@@ -381,7 +381,7 @@
         <div class="card-shell chart-card">
           <div class="card-inner">
             <div class="chart-header">
-              <span class="chart-title">Evolução Semanal</span>
+              <span class="chart-title">Evolução Semanal por Ano — USD/cx 4,5kg</span>
               <div class="filter-bar" id="chile-filter"></div>
             </div>
             <div class="chart-wrap"><canvas id="chartChileLine"></canvas></div>
@@ -418,7 +418,7 @@
         <div class="card-shell chart-card">
           <div class="card-inner">
             <div class="chart-header">
-              <span class="chart-title">Evolução Semanal — €/cx 4,5kg</span>
+              <span class="chart-title">Evolução Semanal por Ano — €/cx 4,5kg</span>
               <div class="filter-bar" id="europa-filter"></div>
             </div>
             <div class="chart-wrap"><canvas id="chartEuropaLine"></canvas></div>
@@ -845,6 +845,53 @@ function barValueLabels(prefix = '', dec = 2) {
   };
 }
 
+// ── Evolução Semanal — padrão único das abas de preço ────────────────────────
+// Uma linha por ano (média das regiões/mercados na semana). Todos os anos
+// visíveis ao carregar; os chips ligam/desligam anos. Área preenchida só quando
+// há um único ano ativo (com vários, o preenchimento embaralha a leitura).
+function drawEvolucaoAnos(canvasId, rows, campo, anos, ativos, tooltipCfg, scalesCfg) {
+  const semanas = [...new Set(rows.map(d => d.semana))].sort((a, b) => a - b);
+  const anosAtivos = anos.filter(a => ativos.has(a));
+  const datasets = anosAtivos.map(ano => {
+    const cor = PALETTE[anos.indexOf(ano) % PALETTE.length];
+    const vals = semanas.map(s => {
+      const r = rows.filter(d => d.ano === ano && d.semana === s);
+      return r.length ? +(r.reduce((sum, d) => sum + d[campo], 0) / r.length).toFixed(3) : null;
+    });
+    return lineDs(String(ano), vals, cor, anosAtivos.length === 1);
+  });
+  mkChart(canvasId, {
+    type: 'line',
+    data: { labels: semanas.map(s => `S${s}`), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom' }, tooltip: tooltipCfg },
+      scales: scalesCfg, spanGaps: true
+    }
+  });
+}
+
+// Chips de ano multi-seleção. Todos ativos no início; nunca deixa zerar.
+// onChange(ativos) recebe o Set de anos ligados.
+function setupChipsAnos(filterElId, anos, onChange) {
+  const el = document.getElementById(filterElId);
+  const ativos = new Set(anos);
+  el.innerHTML = [...anos].reverse()
+    .map(a => `<div class="filter-chip active" data-ano="${a}">${a}</div>`).join('');
+  el.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
+    const ano = +c.dataset.ano;
+    if (ativos.has(ano)) {
+      if (ativos.size === 1) return;   // mantém pelo menos um ano visível
+      ativos.delete(ano); c.classList.remove('active');
+    } else {
+      ativos.add(ano); c.classList.add('active');
+    }
+    onChange(ativos);
+  }));
+  return ativos;
+}
+
 function lineDs(label, data, color, fill = false) {
   return {
     label, data, borderColor: color, backgroundColor: fill ? color + '22' : 'transparent',
@@ -1017,19 +1064,12 @@ async function loadBrasil() {
   // ── Últimas 4 semanas ──
   drawBrasilUlt4sem(data, regioes, curAno);
 
-  // ── Evolução semanal por região (filtro por ano) ──
-  let activeAno = curAno;
-  const filterEl = document.getElementById('brasil-filter');
-  filterEl.innerHTML = [...anos].reverse().map(a =>
-    `<div class="filter-chip ${a===curAno?'active':''}" data-ano="${a}">${a}</div>`).join('');
-  filterEl.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
-    filterEl.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
-    c.classList.add('active');
-    activeAno = +c.dataset.ano;
-    renderBrasilKpis(activeAno);
-    drawBrasil(data, regioes, activeAno);
-  }));
-  drawBrasil(data, regioes, activeAno);
+  // ── Evolução semanal por ano (todos os anos visíveis ao carregar) ──
+  const ativosBr = setupChipsAnos('brasil-filter', anos, (ativos) => {
+    renderBrasilKpis(Math.max(...ativos));   // KPIs seguem o ano mais recente ativo
+    drawEvolucaoAnos('chartBrasil', data, 'preco_4_5kg', anos, ativos, tooltipBRL, scalesBRL);
+  });
+  drawEvolucaoAnos('chartBrasil', data, 'preco_4_5kg', anos, ativosBr, tooltipBRL, scalesBRL);
 }
 
 // Histórico comparativo: uma linha por ano, eixo X = semana ISO
@@ -1093,23 +1133,6 @@ function drawBrasilUlt4sem(data, regioes, curAno) {
       plugins:{legend:{position:'bottom'}, tooltip: tooltipBRL},
       scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
         ticks:{callback: v=>`R$${v.toFixed(2)}`}} } }
-  });
-}
-
-function drawBrasil(data, regioes, ano) {
-  const filtered = data.filter(d => d.ano === ano);
-  const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
-  const datasets = regioes.map((reg, i) =>
-    lineDs(reg, semanas.map(s => {
-      const rows = filtered.filter(d => d.semana === s && d.regiao === reg);
-      return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null;
-    }), PALETTE[i % PALETTE.length])
-  );
-  mkChart('chartBrasil', {
-    type: 'line',
-    data: { labels: semanas.map(s=>`S${s}`), datasets },
-    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'}, tooltip: tooltipBRL}, scales:scalesBRL }
   });
 }
 
@@ -1200,19 +1223,12 @@ async function loadChile() {
   const top5 = Object.entries(contagem).sort((a,b) => b[1]-a[1]).slice(0,5).map(e=>e[0]);
   drawChileUlt4sem(data, curAno);
 
-  // ── Evolução semanal (filtro por ano) ──
-  let activeAno = curAno;
-  const filterEl = document.getElementById('chile-filter');
-  filterEl.innerHTML = [...anos].reverse().map(a =>
-    `<div class="filter-chip ${a===curAno?'active':''}" data-ano="${a}">${a}</div>`).join('');
-  filterEl.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
-    filterEl.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
-    c.classList.add('active');
-    activeAno = +c.dataset.ano;
-    renderChileKpis(activeAno);
-    drawChileLine(data, top5, activeAno);
-  }));
-  drawChileLine(data, top5, activeAno);
+  // ── Evolução semanal por ano (todos os anos visíveis ao carregar) ──
+  const ativosCl = setupChipsAnos('chile-filter', anos, (ativos) => {
+    renderChileKpis(Math.max(...ativos));   // KPIs seguem o ano mais recente ativo
+    drawEvolucaoAnos('chartChileLine', data, 'precio', anos, ativos, tooltipUSD, scalesUSD);
+  });
+  drawEvolucaoAnos('chartChileLine', data, 'precio', anos, ativosCl, tooltipUSD, scalesUSD);
 }
 
 function drawChileHistorico(data, anos, mercado) {
@@ -1273,24 +1289,6 @@ function drawChileUlt4sem(data, curAno) {
       plugins:{legend:{position:'bottom'}, tooltip: tooltipUSD},
       scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
         ticks:{callback: v => `$${v.toFixed(2)}`}} } }
-  });
-}
-
-// Evolução semanal Chile por mercado (um ano)
-function drawChileLine(data, mercados, ano) {
-  const filtered = data.filter(d => d.ano === ano);
-  const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
-  const datasets = mercados.map((merc, i) =>
-    lineDs(merc, semanas.map(s => {
-      const rows = filtered.filter(d => d.semana === s && d.mercado === merc);
-      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(4) : null;
-    }), PALETTE[i % PALETTE.length])
-  );
-  mkChart('chartChileLine', {
-    type: 'line',
-    data: { labels: semanas.map(s=>`S${s}`), datasets },
-    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom'}, tooltip: tooltipUSD}, scales:scalesUSD, spanGaps:true }
   });
 }
 
@@ -1412,34 +1410,12 @@ async function loadEuropa() {
         ticks:{callback: v => `€${v.toFixed(2)}`}} } }
   });
 
-  // ── Evolução semanal com filtro por ano
-  let activeAnoEu = curAno;
-  const filterElEu = document.getElementById('europa-filter');
-  filterElEu.innerHTML = [...anos].reverse().map(a =>
-    `<div class="filter-chip ${a===curAno?'active':''}" data-ano="${a}">${a}</div>`).join('');
-  filterElEu.querySelectorAll('.filter-chip').forEach(c => c.addEventListener('click', () => {
-    filterElEu.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
-    c.classList.add('active');
-    activeAnoEu = +c.dataset.ano;
-    renderEuropaKpis(activeAnoEu);
-    drawEuropaLine(data, activeAnoEu);
-  }));
-  drawEuropaLine(data, curAno);
-}
-
-function drawEuropaLine(data, ano) {
-  const filtered = data.filter(d => d.ano === ano);
-  const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
-  const vals     = semanas.map(s => {
-    const rows = filtered.filter(d => d.semana === s);
-    return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(3) : null;
+  // ── Evolução semanal por ano (todos os anos visíveis ao carregar) ──
+  const ativosEu = setupChipsAnos('europa-filter', anos, (ativos) => {
+    renderEuropaKpis(Math.max(...ativos));   // KPIs seguem o ano mais recente ativo
+    drawEvolucaoAnos('chartEuropaLine', data, 'preco_4_5kg', anos, ativos, tooltipEUR, scalesEUR);
   });
-  mkChart('chartEuropaLine', {
-    type: 'line',
-    data: { labels: semanas.map(s=>`S${s}`), datasets: [lineDs('€/cx 4,5kg', vals, PALETTE[2], true)] },
-    options: { responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{display:false}, tooltip: tooltipEUR}, scales:scalesEUR }
-  });
+  drawEvolucaoAnos('chartEuropaLine', data, 'preco_4_5kg', anos, ativosEu, tooltipEUR, scalesEUR);
 }
 
 // ── HELPERS CHUVA ────────────────────────────────────────────
