@@ -482,7 +482,7 @@
       <div class="page-header">
         <div class="page-eyebrow">🌍 OpenWeatherMap</div>
         <div class="page-title">Clima Global</div>
-        <div class="page-sub">Previsão 5 dias nos principais mercados de destino</div>
+        <div class="page-sub">Previsão 6 dias nos principais mercados de destino</div>
       </div>
       <div class="cidades-grid" id="clima-global-cards">
         <div class="loading"><div class="spinner"></div>Carregando…</div>
@@ -491,13 +491,13 @@
       <div class="two-col">
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Temperatura — 5 dias</span></div>
+            <div class="chart-header"><span class="chart-title">Temperatura média — 6 dias</span></div>
             <div class="chart-wrap"><canvas id="chartGlobalEuropaTemp"></canvas></div>
           </div>
         </div>
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Precipitação (mm) — 5 dias</span></div>
+            <div class="chart-header"><span class="chart-title">Precipitação (mm) — 6 dias</span></div>
             <div class="chart-wrap"><canvas id="chartGlobalEuropaChuva"></canvas></div>
           </div>
         </div>
@@ -506,13 +506,13 @@
       <div class="two-col">
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Temperatura — 5 dias</span></div>
+            <div class="chart-header"><span class="chart-title">Temperatura média — 6 dias</span></div>
             <div class="chart-wrap"><canvas id="chartGlobalAmericasTemp"></canvas></div>
           </div>
         </div>
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Precipitação (mm) — 5 dias</span></div>
+            <div class="chart-header"><span class="chart-title">Precipitação (mm) — 6 dias</span></div>
             <div class="chart-wrap"><canvas id="chartGlobalAmericasChuva"></canvas></div>
           </div>
         </div>
@@ -520,7 +520,7 @@
       <div class="card-shell chart-card" style="margin-top:1rem">
         <div class="card-inner">
           <div class="chart-header">
-            <span class="chart-title">Previsão 5 dias</span>
+            <span class="chart-title">Previsão 6 dias</span>
             <select class="styled-select" id="global-cidade-select"></select>
           </div>
           <div class="chart-wrap"><canvas id="chartGlobal"></canvas></div>
@@ -1729,11 +1729,14 @@ async function loadClimaGlobal() {
   function drawGlobal(key) {
     const [cidade, pais] = key.split('|');
     const fc = data.filter(d => d.cidade === cidade && d.pais === pais);
-    // Agrupa por dia — temp máx e chuva acumulada
+    // Agrupa por dia — temperatura MÉDIA (paridade Power BI) e chuva acumulada.
+    // Máx/mín ficam no tooltip: interessam para estresse térmico da fruta.
     const byDay = {};
     fc.forEach(f => {
       const d = f.data_hora.slice(0,10);
-      if (!byDay[d]) byDay[d] = { tempMax: -99, tempMin: 99, chuva: 0 };
+      if (!byDay[d]) byDay[d] = { soma: 0, n: 0, tempMax: -99, tempMin: 99, chuva: 0 };
+      byDay[d].soma += +f.temp_c;
+      byDay[d].n    += 1;
       byDay[d].tempMax = Math.max(byDay[d].tempMax, +f.temp_max || +f.temp_c);
       byDay[d].tempMin = Math.min(byDay[d].tempMin, +f.temp_min || +f.temp_c);
       byDay[d].chuva  += +f.chuva_mm;
@@ -1744,14 +1747,20 @@ async function loadClimaGlobal() {
     mkChart('chartGlobal', {
       type: 'bar',
       data: { labels, datasets: [
-        barDs('Temp Máx °C', days.map(d => byDay[d].tempMax), PALETTE[0]),
+        barDs('Temp Média °C', days.map(d => Math.round(byDay[d].soma / byDay[d].n)), PALETTE[0]),
         { ...barDs('Chuva mm', days.map(d => byDay[d].chuva.toFixed(1)), '#38BDF8'), yAxisID: 'y1',
           backgroundColor: days.map(d => byDay[d].chuva >= RAIN_DAY_CRITIC ? 'rgba(239,83,80,0.8)' : byDay[d].chuva >= RAIN_DAY_WARN ? 'rgba(245,131,78,0.8)' : 'rgba(56,189,248,0.7)'),
           borderColor: days.map(d => byDay[d].chuva >= RAIN_DAY_CRITIC ? '#EF5350' : byDay[d].chuva >= RAIN_DAY_WARN ? '#F5834E' : '#38BDF8'),
           borderWidth: 1 },
       ]},
       options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-        plugins:{legend:{position:'bottom'}},
+        plugins:{legend:{position:'bottom'},
+          tooltip:{ callbacks:{ label: ctx => {
+            const d = days[ctx.dataIndex];
+            return ctx.datasetIndex === 0
+              ? `Média ${ctx.raw}°C  (máx ${byDay[d].tempMax}° / mín ${byDay[d].tempMin}°)`
+              : `Chuva: ${ctx.raw}mm`;
+          }}}},
         scales:{
           x:  { grid:{display:false} },
           y:  { grid:{color:'rgba(255,255,255,.04)'}, position:'left',
@@ -1779,25 +1788,31 @@ function drawGlobalRegiao(data, cidades, canvasTempId, canvasChuvaId) {
   cidades.forEach(key => {
     const [cidade, pais] = key.split('|');
     const fc = data.filter(d => d.cidade === cidade && d.pais === pais);
+    // Paridade Power BI (Weather_Forecast): temperatura = MÉDIA de Temp no dia,
+    // precipitação = SOMA de Rain_3h no dia. Confirmado no prototypeQuery do .pbix.
     const byDay = {};
     fc.forEach(f => {
       const d = f.data_hora.slice(0, 10);
-      if (!byDay[d]) byDay[d] = { tempMax: -99, chuva: 0 };
-      byDay[d].tempMax = Math.max(byDay[d].tempMax, +f.temp_max || +f.temp_c);
-      byDay[d].chuva  += +f.chuva_mm;
+      if (!byDay[d]) byDay[d] = { soma: 0, n: 0, chuva: 0 };
+      byDay[d].soma += +f.temp_c;
+      byDay[d].n    += 1;
+      byDay[d].chuva += +f.chuva_mm;
     });
-    const days = Object.keys(byDay).sort().slice(0, 5);
-    byCity[key] = days.map(d => ({ day: d, tempMax: byDay[d].tempMax, chuva: +byDay[d].chuva.toFixed(1) }));
+    byCity[key] = byDay;
   });
 
-  const refKey = cidades.find(k => byCity[k]?.length > 0);
-  if (!refKey) return;
-  const labels = byCity[refKey].map(r => fmtDiaMes(r.day));
+  // Eixo X = união dos dias de todas as cidades do grupo (evita cortar cidade
+  // com snapshot mais curto e mantém as séries alinhadas na mesma data).
+  const dias = [...new Set(cidades.flatMap(k => Object.keys(byCity[k] || {})))].sort();
+  if (!dias.length) return;
+  const labels = dias.map(d => fmtDiaMes(d));
+  const serieTemp  = key => dias.map(d => byCity[key]?.[d] ? Math.round(byCity[key][d].soma / byCity[key][d].n) : null);
+  const serieChuva = key => dias.map(d => byCity[key]?.[d] ? +byCity[key][d].chuva.toFixed(2) : null);
 
   mkChart(canvasTempId, {
     type: 'line',
     data: { labels, datasets: cidades.map((key, i) =>
-      lineDs(key.split('|')[0], byCity[key].map(r => r.tempMax), PALETTE[i % PALETTE.length])
+      lineDs(key.split('|')[0], serieTemp(key), PALETTE[i % PALETTE.length])
     ) },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -1811,7 +1826,7 @@ function drawGlobalRegiao(data, cidades, canvasTempId, canvasChuvaId) {
   mkChart(canvasChuvaId, {
     type: 'bar',
     data: { labels, datasets: cidades.map((key, i) =>
-      barDs(key.split('|')[0], byCity[key].map(r => r.chuva), PALETTE[i % PALETTE.length])
+      barDs(key.split('|')[0], serieChuva(key), PALETTE[i % PALETTE.length])
     ) },
     options: {
       responsive: true, maintainAspectRatio: false,
