@@ -819,6 +819,32 @@ function mkChart(id, cfg) {
   return charts[id];
 }
 
+// Rótulo de valor acima da barra (equivalente aos data labels do Power BI).
+// Plugin inline — sem dependência de CDN. Uso: plugins: [barValueLabels('R$ ')]
+function barValueLabels(prefix = '', dec = 2) {
+  return {
+    id: 'barValueLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      ctx.save();
+      ctx.font = '600 11px Inter, system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,.85)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      chart.data.datasets.forEach((ds, di) => {
+        const meta = chart.getDatasetMeta(di);
+        if (meta.hidden) return;
+        meta.data.forEach((bar, i) => {
+          const v = ds.data[i];
+          if (v === null || v === undefined || v === 0) return;
+          ctx.fillText(`${prefix}${(+v).toFixed(dec)}`, bar.x, bar.y - 4);
+        });
+      });
+      ctx.restore();
+    }
+  };
+}
+
 function lineDs(label, data, color, fill = false) {
   return {
     label, data, borderColor: color, backgroundColor: fill ? color + '22' : 'transparent',
@@ -1052,7 +1078,9 @@ function drawBrasilUlt4sem(data, regioes, curAno) {
   mkChart('chartBrasilUlt4sem', {
     type: 'bar',
     data: { labels, datasets },
+    plugins: [barValueLabels('R$ ')],
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      layout:{padding:{top:18}},
       plugins:{legend:{position:'bottom'}, tooltip: tooltipBRL},
       scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
         ticks:{callback: v=>`R$${v.toFixed(2)}`}} } }
@@ -1205,7 +1233,9 @@ function drawChileUlt4sem(data, curAno) {
   mkChart('chartChileUlt4sem', {
     type: 'bar',
     data: { labels, datasets },
+    plugins: [barValueLabels('$')],
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      layout:{padding:{top:18}},
       plugins:{legend:{position:'bottom'}, tooltip: tooltipUSD},
       scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
         ticks:{callback: v => `$${v.toFixed(2)}`}} } }
