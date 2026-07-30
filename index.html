@@ -1039,10 +1039,10 @@ function drawBrasilUlt4sem(data, regioes, curAno) {
     const rows = curData.filter(d => d.semana === s);
     return rows.length ? +(rows.reduce((sum,d)=>sum+d.preco_4_5kg,0)/rows.length).toFixed(2) : 0;
   });
-  // Última semana em verde escuro pra destacar o preço mais recente
-  const VERDE_ESCURO = '#1B5E20';
-  const bgColors     = valores.map((_, i) => i === valores.length - 1 ? VERDE_ESCURO : PALETTE[0] + 'BB');
-  const bordColors   = valores.map((_, i) => i === valores.length - 1 ? VERDE_ESCURO : PALETTE[0]);
+  // Última semana em laranja TFruits (mesma intensidade/alpha das demais)
+  const COR_ATUAL  = PALETTE[1]; // #F15A22
+  const bgColors   = valores.map((_, i) => i === valores.length - 1 ? COR_ATUAL + 'BB' : PALETTE[0] + 'BB');
+  const bordColors = valores.map((_, i) => i === valores.length - 1 ? COR_ATUAL : PALETTE[0]);
   const datasets = [{
     label: 'Média das regiões',
     data: valores,
