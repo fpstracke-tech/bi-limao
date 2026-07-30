@@ -194,6 +194,7 @@
   .cidade-desc { font-size: .7rem; color: var(--text-2); }
   .cidade-extra { display: flex; gap: .8rem; margin-top: .4rem; }
   .cidade-extra span { font-size: .65rem; color: var(--text-3); }
+  .cidade-medicao { font-size: .6rem; color: var(--text-3); opacity: .75; margin-top: .45rem; }
   .rain-badge { display:inline-block; margin-top:.4rem; padding:.2rem .5rem; border-radius:4px; font-size:.65rem; font-weight:600; }
   .rain-badge.warn   { background:rgba(245,131,78,.15); color:#F5834E; border:1px solid rgba(245,131,78,.4); }
   .rain-badge.critic { background:rgba(239,83,80,.15);  color:#EF5350; border:1px solid rgba(239,83,80,.4); animation: pulse-rain 1.5s ease-in-out infinite; }
@@ -1450,18 +1451,40 @@ function rainAlert(totalMm, maxDayMm) {
   return null;
 }
 
-function getFcRain(forecast, cidade, extractedAt) {
-  const fc = forecast.filter(f => f.cidade === cidade && f.extracted_at === extractedAt).slice(0, 7);
-  const total  = fc.reduce((s, f) => s + (+f.chuva_mm || 0), 0);
-  const maxDay = Math.max(0, ...fc.map(f => +f.chuva_mm || 0));
-  return { total, maxDay };
+// Formatação de data no padrão brasileiro.
+// fmtDiaMes('2026-07-30')            → '30/07'
+// fmtDataHora('2026-07-27T12:26:00Z')→ '27/07 12h26'
+function fmtDiaMes(iso) {
+  if (!iso) return '';
+  const [, m, d] = String(iso).slice(0, 10).split('-');
+  return `${d}/${m}`;
+}
+function fmtDataHora(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt)) return fmtDiaMes(iso);
+  const dd = String(dt.getDate()).padStart(2, '0');
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const hh = String(dt.getHours()).padStart(2, '0');
+  const mi = String(dt.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm} ${hh}h${mi}`;
 }
 
-function getFcLatest(forecast, cidade, extractedAt) {
+// Data de hoje em ISO (YYYY-MM-DD) no fuso local — usada para cortar a previsão.
+function hojeISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// Previsão do snapshot mais recente, contada de HOJE para frente (não da data da
+// coleta). O ETL roda semanalmente e a HG Brasil devolve 15 dias — sem esse corte,
+// numa quinta-feira o gráfico exibiria 3 dias já passados como se fossem previsão.
+function getFcLatest(forecast, cidade, extractedAt, dias = 7) {
+  const hoje = hojeISO();
   return forecast
-    .filter(f => f.cidade === cidade && f.extracted_at === extractedAt)
+    .filter(f => f.cidade === cidade && f.extracted_at === extractedAt && f.data_previsao >= hoje)
     .sort((a, b) => a.data_previsao.localeCompare(b.data_previsao))
-    .slice(0, 7);
+    .slice(0, dias);
 }
 
 function coldAlert(minTemp) {
@@ -1503,7 +1526,7 @@ function alertBorderColor(alerts) {
 // ═══════════════════════════════════════════════════════════════
 async function loadClimaLocal() {
   const [atual, forecast] = await Promise.all([
-    sbFetch('clima_brasil_atual', { select:'cidade,data_ref,temp_c,humidade_pct,chuva_mm,descricao,vento_kmh', order:'extracted_at.desc', limit:50 }),
+    sbFetch('clima_brasil_atual', { select:'cidade,data_ref,temp_c,humidade_pct,chuva_mm,descricao,vento_kmh,extracted_at', order:'extracted_at.desc', limit:50 }),
     sbFetch('clima_brasil_forecast', { select:'cidade,data_previsao,extracted_at,temp_max,temp_min,humidade_pct,chuva_mm,prob_chuva_pct,descricao', order:'extracted_at.desc,data_previsao.asc' })
   ]);
 
@@ -1542,6 +1565,7 @@ async function loadClimaLocal() {
         <span>💨 ${c.vento_kmh || '—'}</span>
         ${maxProb > 0 ? `<span>🌦 ${maxProb}% prob</span>` : ''}
       </div>
+      <div class="cidade-medicao">medição de ${fmtDataHora(c.extracted_at)}</div>
       ${alertaChuva ? alertaChuva.html : ''}
       ${alertaFrio  ? alertaFrio.html  : ''}
       ${alertaFungo ? alertaFungo.html : ''}
@@ -1562,12 +1586,11 @@ async function loadClimaLocal() {
 }
 
 function drawClimaFc(forecast, cidade) {
-  // Pega apenas o extracted_at mais recente para esta cidade
+  // Snapshot mais recente da cidade, 7 dias contados de HOJE para frente
   const fcCidade = forecast.filter(f=>f.cidade===cidade);
   const maxExt   = fcCidade.reduce((m,f)=>f.extracted_at>m?f.extracted_at:m,'');
-  const fcLatest = fcCidade.filter(f=>f.extracted_at===maxExt);
-  const fc = fcLatest.sort((a,b)=>a.data_previsao.localeCompare(b.data_previsao)).slice(0,7);
-  const labels = fc.map(f=>f.data_previsao.slice(5)); // MM-DD
+  const fc = getFcLatest(forecast, cidade, maxExt);
+  const labels = fc.map(f=>fmtDiaMes(f.data_previsao)); // dd/mm
   mkChart('chartClimaFc', {
     type: 'bar',
     data: { labels, datasets: [
@@ -1591,19 +1614,18 @@ function drawClimaFc(forecast, cidade) {
 
 // Consolidado regional: temperatura (linha) + precipitação (barra) para um grupo de cidades
 function drawClimaRegiao(forecast, cidades, canvasTempId, canvasChuvaId) {
-  // Para cada cidade, pega o extracted_at mais recente e os 7 dias de previsão
+  // Para cada cidade: snapshot mais recente, 7 dias contados de HOJE para frente
   const byCity = {};
   cidades.forEach(cidade => {
     const fc = forecast.filter(f=>f.cidade===cidade);
     const maxExt = fc.reduce((m,f)=>f.extracted_at>m?f.extracted_at:m,'');
-    byCity[cidade] = fc.filter(f=>f.extracted_at===maxExt)
-      .sort((a,b)=>a.data_previsao.localeCompare(b.data_previsao)).slice(0,7);
+    byCity[cidade] = getFcLatest(forecast, cidade, maxExt);
   });
 
   // Labels = datas da primeira cidade disponível no grupo
   const refCidade = cidades.find(c=>byCity[c] && byCity[c].length>0);
   if (!refCidade) return;
-  const labels = byCity[refCidade].map(f=>f.data_previsao.slice(5));
+  const labels = byCity[refCidade].map(f=>fmtDiaMes(f.data_previsao));
 
   mkChart(canvasTempId, {
     type: 'line',
@@ -1710,7 +1732,7 @@ async function loadClimaGlobal() {
       byDay[d].chuva  += +f.chuva_mm;
     });
     const days   = Object.keys(byDay).sort();
-    const labels = days.map(d => d.slice(5));
+    const labels = days.map(d => fmtDiaMes(d));
 
     mkChart('chartGlobal', {
       type: 'bar',
@@ -1763,7 +1785,7 @@ function drawGlobalRegiao(data, cidades, canvasTempId, canvasChuvaId) {
 
   const refKey = cidades.find(k => byCity[k]?.length > 0);
   if (!refKey) return;
-  const labels = byCity[refKey].map(r => r.day.slice(5));
+  const labels = byCity[refKey].map(r => fmtDiaMes(r.day));
 
   mkChart(canvasTempId, {
     type: 'line',
