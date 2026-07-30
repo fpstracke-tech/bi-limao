@@ -17,11 +17,25 @@ import os
 import io
 import csv
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
 import pandas as pd
+
+
+def week_of_year_pq(d: date) -> int:
+    """
+    Réplica de Date.WeekOfYear do Power Query (default):
+    semana inicia no DOMINGO; semana 1 é a que contém 1º de janeiro.
+    NÃO é semana ISO — mantido por fidelidade ao PBI (query Chile2026).
+    Nota: a coluna Semana dos xlsx históricos da ODEPA (2023–2025) coincide
+    com ISO em 100% das linhas, então o histórico já importado está correto.
+    """
+    jan1 = date(d.year, 1, 1)
+    dias_desde_domingo = (jan1.weekday() + 1) % 7  # Mon=0 ... Sun=6
+    inicio_semana1 = jan1 - timedelta(days=dias_desde_domingo)
+    return (d - inicio_semana1).days // 7 + 1
 try:
     from tqdm import tqdm
     HAS_TQDM = True
@@ -209,7 +223,6 @@ def transform(df: pd.DataFrame, extracted_at: str) -> list[dict]:
         if fecha is None or pd.isnull(fecha):
             continue
         fecha_date = fecha.date() if hasattr(fecha, "date") else fecha
-        iso = fecha_date.isocalendar()
 
         precio_raw = row[col_precio] if col_precio else None
         unidad_str = str(row[col_unidad]) if col_unidad and pd.notna(row[col_unidad]) else ""
@@ -217,8 +230,8 @@ def transform(df: pd.DataFrame, extracted_at: str) -> list[dict]:
 
         records.append({
             "fecha":        fecha_date.isoformat(),
-            "semana":       int(iso.week),
-            "ano":          int(iso.year),
+            "semana":       week_of_year_pq(fecha_date),  # Date.WeekOfYear (PBI, não-ISO)
+            "ano":          fecha_date.year,              # ano civil (PBI usa Date.Year)
             "producto":     str(row[col_prod]).strip(),
             "mercado":      str(row[col_mercado] or "").strip() or None if col_mercado else None,
             "presentacion": str(row[col_pres] or "").strip() or None if col_pres else None,

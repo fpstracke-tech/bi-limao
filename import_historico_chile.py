@@ -1,213 +1,140 @@
 """
 Importação histórica — Chile (ODEPA planilhas 2023/2024/2025)
 ==============================================================
-Estratégia por arquivo:
-  2023.xlsx / 2024.xlsx — arquivo focado em limão (malla 18 kg), todas as linhas são limão
-  2025.xlsx              — multi-produto, filtrar Variedad/Tipo = 'Tahití'
+Réplica fiel das queries M Chile2023/Chile2024/Chile2025 do PBI:
 
-Unidades normalizadas para CLP/kg:
-  $/malla 18 kilos  → / 18
-  $/caja 18 kilos   → / 18
-  $/caja 20 kilos   → / 20
-  $/caja 24 kilos   → / 24
-
-Colunas: Semana | Desde | Hasta | Ano | Mercado | Variedad/Tipo | Calidad | Procedencia | Precio promedio | Unidad
+  - Lê 2023.xlsx / 2024.xlsx / 2025.xlsx (mesmos arquivos do ownCloud que o PBI usa)
+  - Filtra Unidad de comercialización = "$/malla 18 kilos" (único filtro do PBI)
+  - Mantém a granularidade completa: Mercado × Variedad × Calidad × Procedencia
+    (o PBI faz Average por semana sobre TODAS essas linhas — pré-agregar muda a média)
+  - semana / ano = colunas Semana / Ano do próprio xlsx (coincidem com ISO em 100%
+    das linhas — validado 28/07/2026)
+  - precio = Precio promedio / 18 → CLP/kg (mesma base do pipeline 2026;
+    o frontend multiplica por 4.5/980 = fórmula Preço_4.5kg do PBI)
+  - presentacion = "Variedad|Calidad|Procedencia" → mantém as linhas distintas
+    na UNIQUE (fecha, mercado, presentacion)
 
 Uso:
     python import_historico_chile.py
-    python import_historico_chile.py pasta/com/arquivos/
+
+ATENÇÃO: roda DELETE (ano<=2025) + INSERT. Idempotente por substituição.
 """
 
 import sys
-import re
-import os
-from datetime import date, timezone, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import openpyxl
+import requests
 
-# Arquivos esperados
-BASE_DIR   = Path(__file__).parent
-UPLOAD_DIR = BASE_DIR.parent / "uploads"  # uploads da sessão
-
-ARQUIVOS = {
-    2023: {"file": "2023.xlsx",  "todos": True},   # arquivo focado em limão
-    2024: {"file": "2024.xlsx",  "todos": True},   # arquivo focado em limão
-    2025: {"file": "2025.xlsx",  "todos": False},  # multi-produto, filtrar Tahiti
-}
-
-KG_POR_UNIDADE = {
-    "malla 18 kilos": 18,
-    "malla 14 kilos": 14,
-    "malla 15 kilos": 15,
-    "malla 16 kilos": 16,
-    "malla 20 kilos": 20,
-    "caja 18 kilos":  18,
-    "caja 20 kilos":  20,
-    "caja 24 kilos":  24,
-    "bandeja 15 kilos": 15,
-    "bandeja 18 kilos": 18,
-}
+BASE_DIR = Path(__file__).parent
+ARQUIVOS = ["2023.xlsx", "2024.xlsx", "2025.xlsx"]
+UNIDAD_FILTRO = "$/malla 18 kilos"
 
 
-def parse_kg(unidade_str: str) -> float | None:
-    """Extrai kg da string de unidade. Ex: '$/malla 18 kilos' → 18."""
-    if not unidade_str:
-        return None
-    s = str(unidade_str).lower().replace("$/", "").strip()
-    for key, kg in KG_POR_UNIDADE.items():
-        if key in s:
-            return kg
-    # Extrai número: '$/caja 22 kilos' → 22
-    m = re.search(r'(\d+(?:[.,]\d+)?)\s*kilos?', s)
-    if m:
-        return float(m.group(1).replace(",", "."))
+def parse_fecha(v):
+    if hasattr(v, "date"):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    s = str(v).strip()[:10]
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
     return None
 
 
-def parse_date_cl(s: str):
-    """Converte 'DD/MM/YYYY' para date."""
-    try:
-        d, m, y = str(s).strip().split("/")
-        return date(int(y), int(m), int(d))
-    except Exception:
-        return None
-
-
-def load_arquivo(path: Path, todos: bool) -> list[dict]:
-    print(f"  Carregando {path.name}...")
-    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
-    ws = wb.active
+def carregar(path: Path) -> list[dict]:
+    wb = openpyxl.load_workbook(path, read_only=True)
+    ws = wb[wb.sheetnames[0]]
     rows = list(ws.iter_rows(values_only=True))
     wb.close()
-    print(f"    {len(rows)-1} linhas")
+
+    hdr = [str(c).strip() if c is not None else "" for c in rows[0]]
+    def col(part):
+        for i, h in enumerate(hdr):
+            if part.lower() in h.lower():
+                return i
+        raise RuntimeError(f"coluna '{part}' não achada em {path.name}: {hdr}")
+
+    i_sem, i_desde, i_ano  = col("Semana"), col("Desde"), col("Ano")
+    i_merc, i_var, i_cal   = col("Mercado"), col("Variedad"), col("Calidad")
+    i_proc, i_prec, i_uni  = col("Procedencia"), col("Precio promedio"), col("Unidad")
 
     extracted_at = datetime.now(timezone.utc).isoformat()
-    records = []
-    skipped = 0
-
-    for row in rows[1:]:
-        if len(row) < 9:
+    out = []
+    for r in rows[1:]:
+        uni = str(r[i_uni]).strip() if r[i_uni] else ""
+        if uni != UNIDAD_FILTRO:
             continue
-
-        semana, desde, hasta, ano, mercado, variedad, calidad, procedencia, precio_raw, unidad = (
-            row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9] if len(row) > 9 else None
-        )
-
-        # Filtro por variedad (apenas para 2025 que é multi-produto)
-        if not todos:
-            if not variedad or "tahit" not in str(variedad).lower():
-                continue
-
-        # Data: usar 'Desde' como data de referência
-        dt = parse_date_cl(str(desde)) if desde else None
-        if dt is None:
-            skipped += 1
-            continue
-
-        # Preço
+        fecha = parse_fecha(r[i_desde])
         try:
-            precio = float(str(precio_raw).replace(",", "."))
-        except Exception:
-            skipped += 1
+            semana = int(r[i_sem])
+            # PBI: Table.ReplaceValue(null → 2025) na coluna Ano do consolidado
+            ano    = int(r[i_ano]) if r[i_ano] is not None else 2025
+            precio = float(r[i_prec])
+        except (TypeError, ValueError):
+            continue
+        if fecha is None or precio <= 0:
             continue
 
-        # Normalizar para CLP/kg
-        kg = parse_kg(str(unidad) if unidad else "")
-        precio_kg = round(precio / kg, 2) if kg else None
-
-        iso = dt.isocalendar()
-
-        records.append({
-            "fecha":        dt.isoformat(),
-            "semana":       int(iso.week),
-            "ano":          int(iso.year),
-            "producto":     "Limón Tahiti",
-            "mercado":      str(mercado or "").strip() or None,
-            "presentacion": str(calidad or "").strip() or None,
-            "precio":       precio_kg,    # CLP/kg normalizado
+        pres = "|".join(str(r[i] or "").strip() for i in (i_var, i_cal, i_proc))
+        out.append({
+            "fecha":        fecha.isoformat(),
+            "semana":       semana,
+            "ano":          ano,
+            "producto":     "LIMÓN",
+            "mercado":      str(r[i_merc] or "").strip() or None,
+            "presentacion": pres,
+            "precio":       round(precio / 18, 2),   # CLP/kg (malla 18kg)
             "unidad":       "CLP/kg",
             "extracted_at": extracted_at,
         })
-
-    if skipped:
-        print(f"    Skipped: {skipped} (sem data ou preco)")
-
-    # Deduplicar por (fecha, mercado, presentacion) — média de precio
-    from collections import defaultdict
-    grupos = defaultdict(list)
-    for r in records:
-        key = (r["fecha"], r["mercado"] or "", r["presentacion"] or "")
-        if r["precio"] is not None:
-            grupos[key].append(r["precio"])
-    dedup = []
-    seen_keys = set()
-    for r in records:
-        key = (r["fecha"], r["mercado"] or "", r["presentacion"] or "")
-        if key not in seen_keys and key in grupos:
-            seen_keys.add(key)
-            r2 = r.copy()
-            r2["precio"] = round(sum(grupos[key]) / len(grupos[key]), 2)
-            dedup.append(r2)
-
-    print(f"    OK: {len(dedup)} registros (dedup de {len(records)})")
-    return dedup
-
-
-def find_file(filename: str, extra_dirs: list[Path]) -> Path | None:
-    candidatos = [BASE_DIR / filename, UPLOAD_DIR / filename] + [d / filename for d in extra_dirs]
-    for c in candidatos:
-        if c.exists():
-            return c
-    return None
+    return out
 
 
 def main():
-    extra_dirs = [Path(sys.argv[1])] if len(sys.argv) > 1 else []
-
-    print("=" * 60)
-    print("CHILE ETL — Importação Histórica 2023/2024/2025")
-    print("=" * 60)
-
-    all_records = []
-    for ano, cfg in ARQUIVOS.items():
-        path = find_file(cfg["file"], extra_dirs)
-        if not path:
-            print(f"  ⚠  {cfg['file']} não encontrado — pulando {ano}")
+    records = []
+    for nome in ARQUIVOS:
+        path = BASE_DIR / nome
+        if not path.exists():
+            print(f"  ⚠ {nome} não encontrado — pulando")
             continue
-        recs = load_arquivo(path, cfg["todos"])
-        all_records.extend(recs)
+        recs = carregar(path)
+        print(f"  {nome}: {len(recs)} registros malla 18")
+        records += recs
 
-    if not all_records:
-        print("Nenhum registro obtido.")
-        sys.exit(1)
+    if not records:
+        print("Nada a importar."); sys.exit(1)
 
-    anos = sorted(set(r["ano"] for r in all_records))
-    mercados = sorted(set(r["mercado"] for r in all_records if r["mercado"]))
-    precos_validos = [r["precio"] for r in all_records if r["precio"] is not None]
+    # Dedup exato na chave (média se preços diferirem)
+    from collections import defaultdict
+    grupos = defaultdict(list)
+    for r in records:
+        grupos[(r["fecha"], r["mercado"], r["presentacion"])].append(r)
+    dedup = []
+    for regs in grupos.values():
+        base = regs[0]
+        if len(regs) > 1:
+            base["precio"] = round(sum(x["precio"] for x in regs) / len(regs), 2)
+        dedup.append(base)
+    print(f"  Total após dedup: {len(dedup)} (de {len(records)})")
 
-    print(f"\nTotal: {len(all_records)} registros")
-    print(f"Anos: {anos}")
-    print(f"Mercados: {len(mercados)}")
-    if precos_validos:
-        print(f"Preço range: {min(precos_validos):.0f} – {max(precos_validos):.0f} CLP/kg")
+    # DELETE + INSERT
+    env = dict(l.strip().split("=", 1) for l in open(BASE_DIR / ".env")
+               if "=" in l and not l.startswith("#"))
+    url, key = env["SUPABASE_URL"].strip(), env["SUPABASE_KEY"].strip()
+    h = {"apikey": key, "Authorization": f"Bearer {key}"}
+    r = requests.delete(f"{url}/rest/v1/chile_precos?ano=lte.2025", headers=h, timeout=60)
+    print(f"  DELETE 2023-2025: {r.status_code}")
 
-    print("\nPreview (3 primeiros):")
-    for r in all_records[:3]:
-        print(f"  {r['fecha']} | S{r['semana']}/{r['ano']} | {r['mercado']} | {r['precio']} CLP/kg")
-
-    print("\n[2] Enviando ao Supabase...")
-    try:
-        from supabase_upsert import upsert
-        result = upsert("chile_precos", all_records, on_conflict="fecha,mercado,presentacion")
-        print(f"    OK: {result['inserted']} registros inseridos/atualizados")
-        if result.get("errors"):
-            print(f"    Erros: {result['errors'][:3]}")
-    except Exception as e:
-        print(f"    ERRO Supabase: {e}")
-        sys.exit(1)
-
-    print("\nCONCLUÍDO.")
+    from supabase_upsert import insert
+    result = insert("chile_precos", dedup)
+    print(f"  INSERT: {result['inserted']} registros")
+    if result["errors"]:
+        print(f"  Erros: {result['errors'][:2]}")
 
 
 if __name__ == "__main__":

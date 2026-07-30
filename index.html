@@ -358,14 +358,14 @@
       <div class="page-header">
         <div class="page-eyebrow">🇨🇱 ODEPA</div>
         <div class="page-title">Preços Chile</div>
-        <div class="page-sub">Limón — USD/kg por mercado</div>
+        <div class="page-sub">Limón — malla 18kg — USD/cx 4,5kg</div>
       </div>
       <div class="kpi-grid" id="chile-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
       <!-- Histórico comparativo por ano -->
       <div class="card-shell chart-card">
         <div class="card-inner">
           <div class="chart-header">
-            <span class="chart-title">Histórico por Ano — Média semanal USD/kg</span>
+            <span class="chart-title">Histórico por Ano — Média semanal USD/cx 4,5kg</span>
             <select class="styled-select" id="chile-mercado-select"></select>
           </div>
           <div class="chart-wrap"><canvas id="chartChileHistorico"></canvas></div>
@@ -374,7 +374,7 @@
       <div class="two-col" style="margin-top:1rem">
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — USD/kg</span></div>
+            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — Média dos mercados (USD/cx 4,5kg)</span></div>
             <div class="chart-wrap"><canvas id="chartChileUlt4sem"></canvas></div>
           </div>
         </div>
@@ -720,8 +720,7 @@ const CHART_SYNC_GROUPS = [
   ['chartClimaSETemp', 'chartClimaSEChuva'],
   ['chartGlobalEuropaTemp', 'chartGlobalEuropaChuva'],
   ['chartGlobalAmericasTemp', 'chartGlobalAmericasChuva'],
-  ['chartChileUlt4sem', 'chartChileLine'],
-  // Brasil Ult4sem virou média única (paridade PBI) — sync com Evolução removido
+  // Brasil e Chile Ult4sem viraram média única (paridade PBI) — syncs removidos
 ];
 
 function syncLegendToGroup(sourceChart, hiddenByLabel) {
@@ -1088,8 +1087,10 @@ async function loadChile() {
 
   if (!data.length) { pageError('chile-kpis', 'Sem dados'); return; }
 
-  // Normaliza tipos + converte CLP → USD
-  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +(+d.precio * CLP_TO_USD).toFixed(4); }); // CLP/kg → USD/kg
+  // Normaliza tipos + converte CLP/kg → USD/cx 4,5kg (fórmula idêntica ao PBI:
+  // Preço_4.5kg = Precio/18*4.5/980 — precio aqui já é CLP/kg, câmbio FIXO 980)
+  const CLP_USD_PBI = 980;
+  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +(+d.precio * 4.5 / CLP_USD_PBI).toFixed(4); });
 
   const mercados = [...new Set(data.map(d => d.mercado).filter(Boolean))].sort();
   const anos     = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
@@ -1116,11 +1117,11 @@ async function loadChile() {
     // Média anual
     const avgAnual = anoData.reduce((s,d) => s+d.precio, 0) / anoData.length;
     renderKpis('chile-kpis', [
-      { label: 'Preço médio (últ. 4 sem)', value: `US$ ${avg4sem.toFixed(2)}`, unit: 'USD/kg', trend },
-      { label: `Média anual ${ano}`,        value: `US$ ${avgAnual.toFixed(2)}`, unit: 'USD/kg' },
+      { label: 'Preço médio (últ. 4 sem)', value: `US$ ${avg4sem.toFixed(2)}`, unit: 'USD/cx 4,5kg', trend },
+      { label: `Média anual ${ano}`,        value: `US$ ${avgAnual.toFixed(2)}`, unit: 'USD/cx 4,5kg' },
       { label: 'Mercados',                  value: mercados.length, unit: 'monitorados' },
       { label: 'Semana atual',              value: lastSem, unit: `/${ano}` },
-      { label: 'Câmbio do dia',             value: `${USD_CLP_DISPLAY}`, unit: 'CLP por 1 USD' },
+      { label: 'Câmbio',                    value: CLP_USD_PBI, unit: 'CLP/USD — fixo (PBI)' },
     ]);
   }
 
@@ -1128,14 +1129,14 @@ async function loadChile() {
 
   // ── Histórico comparativo por ano (seleciona top mercado por padrão) ──
   const selMerc = document.getElementById('chile-mercado-select');
-  selMerc.innerHTML = `<option value="">Todos os mercados</option>` +
-    mercados.map(m => `<option value="${m}" ${m===topMercado?'selected':''}>${m}</option>`).join('');
+  selMerc.innerHTML = `<option value="">Todos os mercados (média)</option>` +
+    mercados.map(m => `<option value="${m}">${m}</option>`).join('');
   selMerc.addEventListener('change', () => drawChileHistorico(data, anos, selMerc.value));
-  drawChileHistorico(data, anos, topMercado);
+  drawChileHistorico(data, anos, '');  // padrão = média de todos, igual ao PBI
 
-  // ── Últimas 4 semanas (top 5 mercados) ──
+  // ── Últimas 4 semanas (média dos mercados, igual ao PBI) ──
   const top5 = Object.entries(contagem).sort((a,b) => b[1]-a[1]).slice(0,5).map(e=>e[0]);
-  drawChileUlt4sem(data, top5, curAno);
+  drawChileUlt4sem(data, curAno);
 
   // ── Evolução semanal (filtro por ano) ──
   let activeAno = curAno;
@@ -1182,17 +1183,25 @@ function drawChileHistorico(data, anos, mercado) {
   });
 }
 
-// Últimas 4 semanas Chile — barras agrupadas por mercado
-function drawChileUlt4sem(data, mercados, curAno) {
+// Últimas 4 semanas Chile — média dos mercados (igual ao visual do PBI)
+function drawChileUlt4sem(data, curAno) {
   const curData = data.filter(d => d.ano === curAno);
   const semanas = [...new Set(curData.map(d => d.semana))].sort((a,b) => b-a).slice(0,4).reverse();
   const labels  = semanas.map(s => `Sem ${s}`);
-  const datasets = mercados.slice(0,8).map((merc, i) =>
-    barDs(merc, semanas.map(s => {
-      const rows = curData.filter(d => d.semana === s && d.mercado === merc);
-      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(4) : 0;
-    }), PALETTE[i % PALETTE.length])
-  );
+  const valores = semanas.map(s => {
+    const rows = curData.filter(d => d.semana === s);
+    return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(2) : 0;
+  });
+  // Semana atual em laranja TFruits, mesma intensidade (padrão aprovado na aba Brasil)
+  const bgColors   = valores.map((_, i) => i === valores.length - 1 ? PALETTE[1] + 'BB' : PALETTE[0] + 'BB');
+  const bordColors = valores.map((_, i) => i === valores.length - 1 ? PALETTE[1] : PALETTE[0]);
+  const datasets = [{
+    label: 'Média dos mercados',
+    data: valores,
+    backgroundColor: bgColors,
+    borderColor: bordColors,
+    borderWidth: 1, borderRadius: 6, borderSkipped: false
+  }];
   mkChart('chartChileUlt4sem', {
     type: 'bar',
     data: { labels, datasets },
