@@ -1118,16 +1118,27 @@ function drawBrasil(data, regioes, ano) {
 // ═══════════════════════════════════════════════════════════════
 async function loadChile() {
   const data = await sbFetch('chile_precos', {
-    select: 'fecha,semana,ano,mercado,precio',
+    select: 'fecha,semana,ano,mercado,precio,cambio',
     order: 'fecha.asc'
   });
 
   if (!data.length) { pageError('chile-kpis', 'Sem dados'); return; }
 
-  // Normaliza tipos + converte CLP/kg → USD/cx 4,5kg (fórmula idêntica ao PBI:
-  // Preço_4.5kg = Precio/18*4.5/980 — precio aqui já é CLP/kg, câmbio FIXO 980)
+  // CLP/kg → USD/cx 4,5kg.
+  // Câmbio híbrido (decisão 28/07/2026): se o registro tem `cambio` gravado
+  // (dólar observado BCCh da data da observação — 2026+), usa ele; senão cai no
+  // 980 fixo do PBI (dados 2023-2025, preserva comparabilidade histórica).
   const CLP_USD_PBI = 980;
-  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.precio = +(+d.precio * 4.5 / CLP_USD_PBI).toFixed(4); });
+  data.forEach(d => {
+    d.ano = +d.ano; d.semana = +d.semana;
+    d.fx  = d.cambio ? +d.cambio : CLP_USD_PBI;
+    d.precio = +(+d.precio * 4.5 / d.fx).toFixed(4);
+  });
+  // Câmbio médio efetivo do ano corrente (para exibição no KPI)
+  const fxAno = (ano) => {
+    const rows = data.filter(d => d.ano === ano && d.cambio);
+    return rows.length ? rows.reduce((s,d) => s+d.fx, 0) / rows.length : null;
+  };
 
   const mercados = [...new Set(data.map(d => d.mercado).filter(Boolean))].sort();
   const anos     = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
@@ -1167,7 +1178,12 @@ async function loadChile() {
       { label: `Média anual ${ano}`,        value: `US$ ${avgAnual.toFixed(2)}`, unit: 'USD/cx 4,5kg' },
       { label: 'Mercados',                  value: mercados.length, unit: 'monitorados' },
       { label: 'Semana atual',              value: lastSem, unit: `/${ano}` },
-      { label: 'Câmbio',                    value: CLP_USD_PBI, unit: 'CLP/USD — fixo (PBI)' },
+      (() => {
+        const fx = fxAno(ano);
+        return fx
+          ? { label: 'Câmbio médio', value: fx.toFixed(0), unit: `CLP/USD — observado BCCh` }
+          : { label: 'Câmbio',       value: CLP_USD_PBI,   unit: 'CLP/USD — fixo (histórico)' };
+      })(),
     ]);
   }
 

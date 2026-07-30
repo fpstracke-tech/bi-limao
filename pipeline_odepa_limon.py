@@ -59,6 +59,53 @@ ARQ_RAW     = os.path.join(PASTA_LOCAL, f"odepa_raw_{ANO}.csv")
 ARQ_EXCEL   = os.path.join(PASTA_LOCAL, f"{ANO}.xlsx")
 OUTPUT_CSV  = "odepa_limon.csv"
 
+# Câmbio: dólar observado do Banco Central do Chile (via mindicador.cl)
+URL_CAMBIO = f"https://mindicador.cl/api/dolar/{ANO}"
+CAMBIO_FIXO_PBI = 980  # usado só pelos dados 2023-2025 (cambio NULL no banco)
+
+
+# ── CÂMBIO (dólar observado BCCh) ─────────────────────────────────────────────
+def carregar_cambio(ano: int = ANO, tentativas: int = 3) -> dict[str, float]:
+    """
+    Retorna {"AAAA-MM-DD": valor_clp_por_usd} com o dólar observado do BCCh.
+
+    A série só tem dias úteis — datas sem cotação (fim de semana, feriado) são
+    preenchidas com a última taxa anterior disponível (prática padrão de mercado).
+
+    Se a API falhar em todas as tentativas, levanta exceção: é melhor abortar do
+    que gravar 2026 com bases de câmbio misturadas. O ETL é full-refresh do ano,
+    então o run seguinte recupera tudo.
+    """
+    ultimo_erro = None
+    for i in range(tentativas):
+        try:
+            r = requests.get(URL_CAMBIO, timeout=30)
+            r.raise_for_status()
+            serie = {p["fecha"][:10]: float(p["valor"]) for p in r.json()["serie"]}
+            if not serie:
+                raise ValueError("série de câmbio vazia")
+            # Preenche dias sem cotação com a última taxa anterior
+            completo, anterior = {}, None
+            d, fim = date(ano, 1, 1), date(ano, 12, 31)
+            for dia in (d + timedelta(days=n) for n in range((fim - d).days + 1)):
+                iso = dia.isoformat()
+                if iso in serie:
+                    anterior = serie[iso]
+                if anterior is not None:
+                    completo[iso] = anterior
+            print(f"    Câmbio BCCh {ano}: {len(serie)} cotações "
+                  f"(min {min(serie.values()):.1f} / max {max(serie.values()):.1f})")
+            return completo
+        except Exception as e:
+            ultimo_erro = e
+            print(f"    ⚠ câmbio tentativa {i+1}/{tentativas} falhou: {type(e).__name__}")
+            if i < tentativas - 1:
+                time.sleep(10 * (i + 1))
+    raise RuntimeError(
+        f"Não foi possível obter o câmbio BCCh após {tentativas} tentativas "
+        f"({ultimo_erro}). Abortando sem gravar para não misturar bases de câmbio."
+    )
+
 
 # ── DOWNLOAD ──────────────────────────────────────────────────────────────────
 BROWSER_HEADERS = {
@@ -152,7 +199,8 @@ def _find_col(df, *candidates):
     return None
 
 
-def transform(df: pd.DataFrame, extracted_at: str) -> list[dict]:
+def transform(df: pd.DataFrame, extracted_at: str,
+              cambio_map: dict[str, float] | None = None) -> list[dict]:
     print(f"    Colunas CSV: {list(df.columns)}")
 
     # Coluna de produto — pode ser 'Producto', 'Producto ' etc.
@@ -249,6 +297,9 @@ def transform(df: pd.DataFrame, extracted_at: str) -> list[dict]:
             ),
             "precio":       precio_kg,
             "unidad":       "CLP/kg",
+            # Câmbio da DATA da observação — fica gravado por registro, então a
+            # série não se revaloriza retroativamente nos runs seguintes.
+            "cambio":       (cambio_map or {}).get(fecha_date.isoformat()),
             "extracted_at": extracted_at,
         })
 
@@ -298,9 +349,16 @@ def main():
     df = ler_csv_robusto(data)
     print(f"    {len(df)} linhas totais | colunas: {list(df.columns)}")
 
-    print("[4] Filtrando e transformando...")
-    records = transform(df, extracted_at)
+    print(f"[4] Carregando câmbio (dólar observado BCCh {ANO})...")
+    cambio_map = carregar_cambio()
+
+    print("[5] Filtrando e transformando...")
+    records = transform(df, extracted_at, cambio_map)
     print(f"    {len(records)} registros de LIMÓN")
+    sem_cambio = sum(1 for r in records if r.get("cambio") is None)
+    if sem_cambio:
+        print(f"    ⚠ {sem_cambio} registros sem câmbio na data (frontend usará "
+              f"{CAMBIO_FIXO_PBI} fixo) — verificar cobertura da série BCCh")
 
     if not records:
         print("❌ Nenhum registro obtido.")
@@ -322,7 +380,10 @@ def main():
     # Preview
     print("\nPreview (3 primeiros):")
     for r in records[:3]:
-        print(f"  {r['fecha']} | sem {r['semana']}/{r['ano']} | {r['mercado']} | {r['precio']} CLP/kg")
+        cb = r.get("cambio")
+        usd = f" → US$ {r['precio']*4.5/cb:.2f}/cx4,5kg @ {cb:.1f}" if cb and r["precio"] else ""
+        print(f"  {r['fecha']} | sem {r['semana']}/{r['ano']} | {r['mercado']} | "
+              f"{r['precio']} CLP/kg{usd}")
 
     # Upsert Supabase
     try:
