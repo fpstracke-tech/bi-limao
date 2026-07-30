@@ -178,6 +178,26 @@
   td { padding: .55rem .9rem; border-bottom: 1px solid rgba(255,255,255,.03); color: var(--text-2); white-space: nowrap; }
   tr:hover td { background: var(--green-dim); color: var(--text); }
 
+  /* Tabela país × mês (Share Brasil): cada mês tem que ser lido sem ambiguidade.
+     Números à direita, régua vertical entre meses, coluna País ancorada na
+     rolagem horizontal e coluna Total destacada como fechamento da linha. */
+  table.table-mes td, table.table-mes th { border-right: 1px solid rgba(255,255,255,.05); }
+  table.table-mes .col-mes { text-align: right; font-variant-numeric: tabular-nums; padding-left: .55rem; padding-right: .8rem; }
+  table.table-mes .col-mes-vazio { color: var(--text-3); }
+  table.table-mes .col-pais {
+    position: sticky; left: 0; z-index: 2; background: var(--surface);
+    font-weight: 500; color: var(--text); max-width: 190px; overflow: hidden; text-overflow: ellipsis;
+  }
+  table.table-mes thead .col-pais { background: var(--surface); }
+  table.table-mes tr:hover .col-pais { background: var(--green-dim); }
+  table.table-mes .col-total { text-align: right; border-right: none; background: rgba(255,255,255,.02); }
+  table.table-mes .col-rank { color: var(--text-3); font-variant-numeric: tabular-nums; padding-right: 0; border-right: none; width: 1.6rem; }
+  .chart-note { font-size: .65rem; color: var(--text-3); margin-top: .7rem; line-height: 1.5; }
+  table.table-mes tfoot td {
+    border-top: 1px solid var(--border); border-bottom: none;
+    color: var(--text); font-weight: 600; background: rgba(255,255,255,.02);
+  }
+
   /* ── TABS (page navigation) ──────────────────────────────────── */
   .page { display: none; }
   .page.active { display: block; }
@@ -561,14 +581,14 @@
       <div class="two-col">
         <div class="card-shell chart-card">
           <div class="card-inner">
-            <div class="chart-header"><span class="chart-title">Volume kg — Top 10 países</span></div>
+            <div class="chart-header"><span class="chart-title">Top 10 países — containers</span></div>
             <div class="chart-wrap"><canvas id="chartShareBar"></canvas></div>
           </div>
         </div>
         <div class="card-shell chart-card">
           <div class="card-inner">
             <div class="chart-header"><span class="chart-title">Exportações mensais (containers)</span>
-              <select class="styled-select" id="share-ano-select"></select>
+              <div class="filter-bar" id="share-anos-chips"></div>
             </div>
             <div class="chart-wrap"><canvas id="chartShareLine"></canvas></div>
           </div>
@@ -576,17 +596,18 @@
       </div>
       <div class="card-shell" style="margin-top:1rem">
         <div class="card-inner">
-          <div class="chart-header" style="margin-bottom:.8rem"><span class="chart-title">Tabela por país / mês</span>
+          <div class="chart-header" style="margin-bottom:.8rem"><span class="chart-title">Top 10 destinos por mês — containers</span>
             <div style="display:flex;gap:.5rem;align-items:center">
               <select class="styled-select" id="share-table-sort">
-                <option value="az">A → Z</option>
                 <option value="desc" selected>Maior volume</option>
+                <option value="az">A → Z</option>
                 <option value="asc">Menor volume</option>
               </select>
               <select class="styled-select" id="share-table-ano"></select>
             </div>
           </div>
-          <div class="table-wrap"><table id="share-table"><thead></thead><tbody></tbody></table></div>
+          <div class="table-wrap"><table id="share-table" class="table-mes"><thead></thead><tbody></tbody><tfoot></tfoot></table></div>
+          <div class="chart-note" id="share-table-note"></div>
         </div>
       </div>
     </section>
@@ -1860,7 +1881,7 @@ async function loadShare() {
   renderKpis('share-kpis', [
     { label: `Containers exportados ${curAno}`, value: totalCont.toLocaleString('pt-BR'), unit: 'cont. 40\' (23.760 kg)' },
     { label: `USD FOB ${curAno}`, value: '$'+(totalUSD/1e6).toFixed(1)+'M', unit: 'valor FOB' },
-    { label: 'Países destino', value: paises, unit: 'histórico' },
+    { label: 'Países destino', value: paises, unit: `em ${curAno}` },
     { label: 'NCM', value: '08055000', unit: 'Limão Tahiti' },
   ]);
 
@@ -1875,43 +1896,101 @@ async function loadShare() {
       scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{callback:v=>v.toLocaleString('pt-BR')}},y:{grid:{display:false}}}}
   });
 
-  // Line + Ano select
-  const selAno  = document.getElementById('share-ano-select');
+  // Exportações mensais — uma linha por ano (comparativo), padrão de chips das
+  // abas de preço: todos os anos visíveis ao carregar, nunca zera a seleção.
+  const MESES_LABEL = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const MESES = [1,2,3,4,5,6,7,8,9,10,11,12];
   const selAnot = document.getElementById('share-table-ano');
-  selAno.innerHTML = selAnot.innerHTML = anos.map(a=>`<option value="${a}">${a}</option>`).join('');
-  function drawShareLine(ano) {
-    const meses = [1,2,3,4,5,6,7,8,9,10,11,12];
-    const MESES_LABEL = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-    const vals = meses.map(m=>kgToCont(data.filter(d=>d.ano===+ano&&d.mes===m).reduce((s,d)=>s+ +d.kg_liquido,0)));
+  selAnot.innerHTML = anos.map(a=>`<option value="${a}">${a}</option>`).join('');
+
+  // kg por ano×mês pré-agregado: evita varrer o array inteiro 12× por ano.
+  const kgAnoMes = {};
+  data.forEach(d => { const k = `${d.ano}|${d.mes}`; kgAnoMes[k] = (kgAnoMes[k]||0) + +d.kg_liquido; });
+
+  const anosAsc = [...anos].sort((a,b)=>a-b);
+  function drawShareMensal(ativos) {
+    const datasets = anosAsc.filter(a=>ativos.has(a)).map(ano => {
+      // Meses sem dado ficam null (não zero) — senão o ano corrente desaba
+      // para o eixo nos meses que ainda não aconteceram.
+      const vals = MESES.map(m => kgAnoMes[`${ano}|${m}`] != null ? kgToCont(kgAnoMes[`${ano}|${m}`]) : null);
+      return lineDs(String(ano), vals, PALETTE[anosAsc.indexOf(ano) % PALETTE.length], ativos.size === 1);
+    });
     mkChart('chartShareLine', {
       type:'line',
-      data:{ labels:MESES_LABEL, datasets:[lineDs('Containers', vals, PALETTE[2], true)] },
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      data:{ labels:MESES_LABEL, datasets },
+      options:{responsive:true,maintainAspectRatio:false,spanGaps:true,
+        interaction:{mode:'index',intersect:false},
+        plugins:{legend:{position:'bottom'},
+          tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${(+ctx.raw).toLocaleString('pt-BR')} cont.`}}},
         scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxRotation:0}},
                 y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{callback:v=>v.toLocaleString('pt-BR')}}}}
     });
   }
+  const anosAtivos = setupChipsAnos('share-anos-chips', anosAsc, ativos => drawShareMensal(ativos));
   const selSort = document.getElementById('share-table-sort');
+  const TOP_N_TABELA = 10;
+
   function drawShareTable(ano) {
-    const sort  = selSort.value;
-    const meses = [...new Set(data.filter(d=>d.ano===+ano).map(d=>d.mes))].sort((a,b)=>a-b);
-    const ML    = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-    const paisTotais = [...new Set(data.filter(d=>d.ano===+ano).map(d=>d.pais))]
-      .map(p => ({ p, tot: data.filter(d=>d.ano===+ano&&d.pais===p).reduce((s,d)=>s+ +d.kg_liquido,0) }));
-    if (sort === 'az')   paisTotais.sort((a,b) => a.p.localeCompare(b.p));
-    if (sort === 'desc') paisTotais.sort((a,b) => b.tot - a.tot);
-    if (sort === 'asc')  paisTotais.sort((a,b) => a.tot - b.tot);
+    const sort   = selSort.value;
+    const doAno  = data.filter(d=>d.ano===+ano);
+    const meses  = [...new Set(doAno.map(d=>d.mes))].sort((a,b)=>a-b);
+
+    // kg por país×mês e total do país, numa passada só
+    const kgPaisMes = {}, kgPais = {};
+    doAno.forEach(d => {
+      kgPaisMes[`${d.pais}|${d.mes}`] = (kgPaisMes[`${d.pais}|${d.mes}`]||0) + +d.kg_liquido;
+      kgPais[d.pais] = (kgPais[d.pais]||0) + +d.kg_liquido;
+    });
+
+    // Top 10 SEMPRE por volume — a ordenação escolhida só reordena esses 10,
+    // nunca troca quem entra na tabela.
+    const todos = Object.entries(kgPais).map(([p, tot]) => ({ p, tot }));
+    const totalAno = todos.reduce((s,x)=>s+x.tot, 0);
+    const top = todos.sort((a,b)=>b.tot-a.tot).slice(0, TOP_N_TABELA);
+    const linhas = [...top];
+    if (sort === 'az')  linhas.sort((a,b)=>a.p.localeCompare(b.p,'pt-BR'));
+    if (sort === 'asc') linhas.sort((a,b)=>a.tot-b.tot);
+
+    const rank = Object.fromEntries(top.map((x,i)=>[x.p, i+1]));
+    const contTotalAno = kgToCont(totalAno);
+    const nf = n => n.toLocaleString('pt-BR');
+
     const t = document.getElementById('share-table');
-    t.querySelector('thead').innerHTML = `<tr><th>País</th>${meses.map(m=>`<th>${ML[m-1]}</th>`).join('')}<th>Total</th></tr>`;
-    t.querySelector('tbody').innerHTML = paisTotais.map(({p, tot})=>{
-      const row = meses.map(m=>{ const r=data.find(d=>d.ano===+ano&&d.mes===m&&d.pais===p); return r?kgToCont(+r.kg_liquido):'—'; });
-      return `<tr><td>${p}</td>${row.map(v=>`<td>${v}</td>`).join('')}<td><span class="badge">${kgToCont(tot)}</span></td></tr>`;
+    t.querySelector('thead').innerHTML =
+      `<tr><th class="col-rank"></th><th class="col-pais">País</th>` +
+      meses.map(m=>`<th class="col-mes">${MESES_LABEL[m-1]}</th>`).join('') +
+      `<th class="col-total">Total</th><th class="col-total">Share</th></tr>`;
+
+    t.querySelector('tbody').innerHTML = linhas.map(({p, tot})=>{
+      const cels = meses.map(m=>{
+        const kg = kgPaisMes[`${p}|${m}`];
+        return kg
+          ? `<td class="col-mes">${nf(kgToCont(kg))}</td>`
+          : `<td class="col-mes col-mes-vazio">—</td>`;
+      }).join('');
+      const share = totalAno ? (tot/totalAno*100) : 0;
+      return `<tr><td class="col-rank">${rank[p]}</td><td class="col-pais" title="${p}">${p}</td>${cels}` +
+             `<td class="col-total"><span class="badge">${nf(kgToCont(tot))}</span></td>` +
+             `<td class="col-total">${share.toFixed(1).replace('.',',')}%</td></tr>`;
     }).join('');
+
+    // Rodapé = total do ANO INTEIRO (todos os países), não só dos 10 exibidos:
+    // é o número que fecha com o KPI e com o Total Containers do Power BI.
+    const kgMesTodos = m => doAno.filter(d=>d.mes===m).reduce((s,d)=>s+ +d.kg_liquido,0);
+    t.querySelector('tfoot').innerHTML =
+      `<tr><td class="col-rank"></td><td class="col-pais">Total ${ano} (todos)</td>` +
+      meses.map(m=>`<td class="col-mes">${nf(kgToCont(kgMesTodos(m)))}</td>`).join('') +
+      `<td class="col-total">${nf(contTotalAno)}</td><td class="col-total">100,0%</td></tr>`;
+
+    const somaTop = top.reduce((s,x)=>s+x.tot, 0);
+    document.getElementById('share-table-note').textContent =
+      `Top ${top.length} de ${todos.length} destinos em ${ano} — concentram ${(somaTop/totalAno*100).toFixed(1).replace('.',',')}% do volume. ` +
+      `Containers de 40' = ⌈kg ÷ 23.760⌉, arredondado para cima em cada célula (mesma regra do Power BI), por isso a soma das colunas pode diferir do total em algumas unidades.`;
   }
-  selAno.addEventListener('change', ()=>drawShareLine(selAno.value));
+
   selAnot.addEventListener('change', ()=>drawShareTable(selAnot.value));
   selSort.addEventListener('change', ()=>drawShareTable(selAnot.value));
-  drawShareLine(curAno); drawShareTable(curAno);
+  drawShareMensal(anosAtivos); drawShareTable(curAno);
 }
 
 // ═══════════════════════════════════════════════════════════════
