@@ -175,6 +175,10 @@ def transform(df: pd.DataFrame, extracted_at: str) -> list[dict]:
     col_mercado = _find_col(df_limon, "Mercado", "mercado")
     col_pres    = _find_col(df_limon, "Calidad", "Presentacion", "presentacion")
     col_unidad  = _find_col(df_limon, "Unidad de comercializacion", "Unidad de comercialización", "Unidad", "unidad")
+    # Variedad + Procedencia entram na chave de dedup junto com Calidad — sem isso
+    # linhas legitimamente distintas colapsam e a média semanal sobe ~10% vs o PBI
+    col_var     = _find_col(df_limon, "Variedad / Tipo", "Variedad", "variedad")
+    col_orig    = _find_col(df_limon, "Origen", "Procedencia", "origen")
 
     print(f"    Mapeamento: fecha={col_fecha}, precio={col_precio}, mercado={col_mercado}, unidad={col_unidad}")
 
@@ -234,7 +238,10 @@ def transform(df: pd.DataFrame, extracted_at: str) -> list[dict]:
             "ano":          fecha_date.year,              # ano civil (PBI usa Date.Year)
             "producto":     str(row[col_prod]).strip(),
             "mercado":      str(row[col_mercado] or "").strip() or None if col_mercado else None,
-            "presentacion": str(row[col_pres] or "").strip() or None if col_pres else None,
+            "presentacion": "|".join(
+                str(row[c] or "").strip() if c else ""
+                for c in (col_var, col_pres, col_orig)
+            ),
             "precio":       precio_kg,
             "unidad":       "CLP/kg",
             "extracted_at": extracted_at,
