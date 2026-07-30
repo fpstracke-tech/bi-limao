@@ -988,7 +988,16 @@ async function loadBrasil() {
     const trend    = avgPrev4 ? ((avg4sem - avgPrev4) / avgPrev4) * 100 : null;
     // Média anual
     const avgAnual = anoData.reduce((s,d) => s+d.preco_4_5kg, 0) / anoData.length;
+    // Último preço válido — média da última semana coletada, com variação vs semana anterior com dado
+    const semsComDado = [...new Set(anoData.map(d => d.semana))].sort((a,b) => a-b);
+    const lastRows = anoData.filter(d => d.semana === lastSem);
+    const avgLast  = lastRows.reduce((s,d) => s+d.preco_4_5kg, 0) / lastRows.length;
+    const semPrev  = semsComDado[semsComDado.length - 2];
+    const prevRows = semPrev ? anoData.filter(d => d.semana === semPrev) : [];
+    const avgPrevSem = prevRows.length ? prevRows.reduce((s,d) => s+d.preco_4_5kg, 0) / prevRows.length : 0;
+    const trendLast  = avgPrevSem ? ((avgLast - avgPrevSem) / avgPrevSem) * 100 : null;
     renderKpis('brasil-kpis', [
+      { label: `Último preço — Sem ${lastSem}`, value: `R$ ${avgLast.toFixed(2)}`, unit: 'R$/cx 4,5kg', trend: trendLast },
       { label: 'Preço médio (últ. 4 sem)', value: `R$ ${avg4sem.toFixed(2)}`,  unit: 'R$/cx 4,5kg', trend },
       { label: `Média anual ${ano}`,        value: `R$ ${avgAnual.toFixed(2)}`, unit: 'R$/cx 4,5kg' },
       { label: 'Regiões (HF Brasil)',       value: regioes.length, unit: 'monitoradas' },
@@ -1144,7 +1153,16 @@ async function loadChile() {
     const trend    = avgPrev4 ? ((avg4sem - avgPrev4) / avgPrev4) * 100 : null;
     // Média anual
     const avgAnual = anoData.reduce((s,d) => s+d.precio, 0) / anoData.length;
+    // Último preço válido — média da última semana coletada, com variação vs semana anterior com dado
+    const semsComDado = [...new Set(anoData.map(d => d.semana))].sort((a,b) => a-b);
+    const lastRows = anoData.filter(d => d.semana === lastSem);
+    const avgLast  = lastRows.reduce((s,d) => s+d.precio, 0) / lastRows.length;
+    const semPrev  = semsComDado[semsComDado.length - 2];
+    const prevRows = semPrev ? anoData.filter(d => d.semana === semPrev) : [];
+    const avgPrevSem = prevRows.length ? prevRows.reduce((s,d) => s+d.precio, 0) / prevRows.length : 0;
+    const trendLast  = avgPrevSem ? ((avgLast - avgPrevSem) / avgPrevSem) * 100 : null;
     renderKpis('chile-kpis', [
+      { label: `Último preço — Sem ${lastSem}`, value: `US$ ${avgLast.toFixed(2)}`, unit: 'USD/cx 4,5kg', trend: trendLast },
       { label: 'Preço médio (últ. 4 sem)', value: `US$ ${avg4sem.toFixed(2)}`, unit: 'USD/cx 4,5kg', trend },
       { label: `Média anual ${ano}`,        value: `US$ ${avgAnual.toFixed(2)}`, unit: 'USD/cx 4,5kg' },
       { label: 'Mercados',                  value: mercados.length, unit: 'monitorados' },
