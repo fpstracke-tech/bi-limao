@@ -15,8 +15,12 @@ RESEND_API_KEY = os.environ["RESEND_API_KEY"]
 
 DASHBOARD_URL = "https://bilimao.tfruits.com.br"
 FROM_EMAIL    = "reports@tradeconnex.com"
-# TESTE/VALIDACAO: apos aprovar, voltar para a lista definitiva
-TO_EMAILS     = ["fpstracke@gmail.com"]
+TO_EMAILS = [
+    "felipe@tfruits.com.br",
+    "luan.santos@tfruits.com.br",
+    "caroline@tfruits.com.br",
+]
+CC_EMAILS = ["felipe.passos@tradeconnex.com"]
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
@@ -336,6 +340,7 @@ def send_email(pdf_bytes):
     payload = {
         "from": FROM_EMAIL,
         "to": TO_EMAILS,
+        "cc": CC_EMAILS,
         "subject": SUBJECT,
         "html": f"""
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
@@ -416,4 +421,4 @@ if __name__ == "__main__":
     print("Enviando via Resend...")
     result = send_email(pdf_bytes)
     print(f"  Enviado. ID: {result.get('id','')}")
-    print(f"  Para: {', '.join(TO_EMAILS)}")
+    print(f"  Para: {', '.join(TO_EMAILS)} (cc: {', '.join(CC_EMAILS)})")
