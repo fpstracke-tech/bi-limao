@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 RESEND_API_KEY = os.environ["RESEND_API_KEY"]
 
 DASHBOARD_URL = "https://bilimao.tfruits.com.br"
+LOGO_URL      = f"{DASHBOARD_URL}/logo_email.png"  # hospedado — Gmail bloqueia base64
 FROM_EMAIL    = "reports@tradeconnex.com"
 # TESTE/VALIDAÇÃO — após aprovar, voltar para a lista definitiva
 TO_EMAILS     = ["fpstracke@gmail.com"]
@@ -82,15 +83,21 @@ def capturar_screenshots():
         page.wait_for_selector(".kpi-card, .kpi-value, canvas", timeout=30000)
         page.wait_for_timeout(3000)  # aguarda animações
 
-        # Modo relatório: esconde navegação e desliga animações,
-        # para o full-page screenshot sair limpo e completo
+        # Modo relatório: esconde navegação e acelera animações.
+        # NÃO usar `animation: none` — cards e page-header têm opacity:0
+        # e dependem do fadeUp (forwards) pra ficarem visíveis.
         page.add_style_tag(content="""
             .sidebar, .mobile-bar { display: none !important; }
             .app  { display: block !important; }
             .main { padding: 1.5rem 2rem 2rem !important; }
-            *, *::before, *::after {
-                animation: none !important;
+            * {
+                animation-duration: 0.01s !important;
+                animation-delay: 0s !important;
                 transition: none !important;
+            }
+            .card-shell, .page-header {
+                opacity: 1 !important;
+                transform: none !important;
             }
         """)
 
@@ -217,31 +224,43 @@ def send_email(pdf_bytes):
         "to": TO_EMAILS,
         "subject": SUBJECT,
         "html": f"""
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
-          <div style="background:#4CAE4F;padding:24px;border-radius:8px 8px 0 0;display:flex;align-items:center;gap:16px">
-            <img src="data:image/png;base64,{LOGO_B64}" alt="TFruits" style="height:60px;width:auto;display:block"/>
-            <div>
-              <h1 style="color:white;margin:0;font-size:22px">BI Limão — Relatório Semanal</h1>
-              <p style="color:rgba(255,255,255,.85);margin:6px 0 0">{semana_label} · {DATA_PT}</p>
-            </div>
-          </div>
-          <div style="padding:24px;background:#f9f9f9;border-radius:0 0 8px 8px">
-            <p style="color:#333">Olá Felipe,</p>
-            <p style="color:#333">Segue em anexo o relatório semanal do BI Limão com screenshots das abas:</p>
-            <ul style="color:#333">{abas_html}</ul>
-            <p style="margin-top:20px">
-              <a href="{DASHBOARD_URL}"
-                 style="background:#4CAE4F;color:white;padding:10px 20px;border-radius:6px;
-                        text-decoration:none;font-weight:bold;display:inline-block">
-                Abrir Dashboard ao vivo →
-              </a>
-            </p>
-            <p style="color:#aaa;font-size:12px;margin-top:24px">
-              Enviado automaticamente toda segunda-feira · TFruits ·
-              <a href="{DASHBOARD_URL}" style="color:#4CAE4F">{DASHBOARD_URL.replace('https://','')}</a>
-            </p>
-          </div>
-        </div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:600px;margin:auto;font-family:Arial,Helvetica,sans-serif;border-collapse:collapse">
+          <tr>
+            <td align="center" style="background:#ffffff;padding:20px 24px;border:1px solid #e5e5e5;border-bottom:none">
+              <img src="{LOGO_URL}" width="150" alt="TFruits"
+                   style="display:block;width:150px;height:auto;border:0"/>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="background:#4CAE4F;padding:20px 24px">
+              <h1 style="color:#ffffff;margin:0;font-size:21px;line-height:1.3">BI Limão — Relatório Semanal</h1>
+              <p style="color:#eaf6ea;margin:6px 0 0;font-size:14px">{semana_label} &middot; {DATA_PT}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f9f9f9;padding:24px;border:1px solid #e5e5e5;border-top:none">
+              <p style="color:#333;margin:0 0 12px">Olá,</p>
+              <p style="color:#333;margin:0 0 12px">Segue em anexo o relatório semanal do BI Limão com as seções:</p>
+              <ul style="color:#333;margin:0 0 8px;padding-left:20px">{abas_html}</ul>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0 0">
+                <tr>
+                  <td align="center" bgcolor="#4CAE4F" style="border-radius:6px">
+                    <a href="{DASHBOARD_URL}"
+                       style="display:inline-block;padding:11px 22px;color:#ffffff;
+                              text-decoration:none;font-weight:bold;font-size:14px">
+                      Abrir Dashboard ao vivo &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="color:#aaa;font-size:12px;margin:24px 0 0">
+                Enviado automaticamente toda segunda-feira &middot; TFruits &middot;
+                <a href="{DASHBOARD_URL}" style="color:#4CAE4F">{DASHBOARD_URL.replace('https://','')}</a>
+              </p>
+            </td>
+          </tr>
+        </table>
         """,
         "attachments": [
             {
