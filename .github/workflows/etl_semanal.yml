@@ -2,7 +2,7 @@ name: ETL Semanal — Preços
 
 on:
   schedule:
-    - cron: '0 9 * * 1'   # Toda segunda-feira às 06:00 BRT (09:00 UTC)
+    - cron: '0 8 * * 1'   # Toda segunda-feira às 05:00 BRT (08:00 UTC), 2h antes do relatório
   workflow_dispatch:
     inputs:
       skip:

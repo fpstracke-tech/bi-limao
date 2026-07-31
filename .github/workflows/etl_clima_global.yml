@@ -8,7 +8,7 @@ name: ETL Clima Global — diário
 
 on:
   schedule:
-    - cron: '0 9 * * *'   # Todos os dias às 06:00 BRT (09:00 UTC)
+    - cron: '0 8 * * *'   # Todos os dias às 05:00 BRT (08:00 UTC), 2h antes do relatório na segunda
   workflow_dispatch:
 
 jobs:
