@@ -13,6 +13,8 @@ Saída:
 
 import csv
 import json
+import os
+import sys
 from datetime import datetime, timezone
 
 import requests
@@ -30,6 +32,28 @@ ANOS = [
     {"from": "2025-01", "to": "2025-12"},
     {"from": "2026-01", "to": "2026-12"},
 ]
+
+
+# ── MÊS ALVO (retry até a fonte publicar) ─────────────────────────────────────
+def mes_alvo() -> tuple[int, int]:
+    """Mês anterior ao corrente: é ele que o MDIC publica por volta do dia 10."""
+    hoje = datetime.now(timezone.utc)
+    if hoje.month == 1:
+        return hoje.year - 1, 12
+    return hoje.year, hoje.month - 1
+
+
+def mes_no_banco(ano: int, mes: int) -> bool:
+    """Consulta o Supabase: o mês alvo já tem registros?"""
+    from supabase_upsert import SUPABASE_URL, SUPABASE_KEY
+    r = requests.get(
+        f"{SUPABASE_URL}/rest/v1/comexstat_exportacoes",
+        params={"ano": f"eq.{ano}", "mes": f"eq.{mes}", "select": "ano", "limit": 1},
+        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+        timeout=15,
+    )
+    r.raise_for_status()
+    return len(r.json()) > 0
 
 
 # ── FETCH ──────────────────────────────────────────────────────────────────────
@@ -82,6 +106,20 @@ def main():
     print("COMEXSTAT ETL — Exportações Limão Tahiti (NCM 08055000)")
     print("=" * 60)
 
+    forcar = bool(os.environ.get("COMEXSTAT_FORCAR"))
+    ano_alvo, mes_num = mes_alvo()
+
+    # Janela de retry (dias 10-20): se o mês alvo já entrou no banco numa
+    # run anterior, não há nada novo a coletar — encerra sem gastar a fonte.
+    if not forcar:
+        try:
+            if mes_no_banco(ano_alvo, mes_num):
+                print(f"Mês alvo {ano_alvo}-{mes_num:02d} já está no banco. Nada a fazer.")
+                return
+            print(f"Mês alvo {ano_alvo}-{mes_num:02d} ainda não está no banco. Coletando...")
+        except Exception as e:
+            print(f"⚠️  Não consegui checar o banco ({e}). Coletando por garantia...")
+
     extracted_at = datetime.now(timezone.utc).isoformat()
     all_records  = []
 
@@ -123,6 +161,18 @@ def main():
             print(f"    ⚠️  Erros: {result['errors']}")
     except Exception as e:
         print(f"    ⚠️  Supabase skipped: {e}")
+
+    # Verificação do mês alvo após a coleta
+    tem_alvo = any(r["ano"] == ano_alvo and r["mes"] == mes_num for r in all_records)
+    if tem_alvo:
+        print(f"\n✅ Mês alvo {ano_alvo}-{mes_num:02d} publicado e carregado.")
+    else:
+        print(f"\n⏳ Fonte ainda não publicou {ano_alvo}-{mes_num:02d}. "
+              f"Nova tentativa na próxima run da janela (dias 10-20).")
+        # No fim da janela sem dado: falha de verdade, para abrir issue e alertar
+        if datetime.now(timezone.utc).day >= 20 and not forcar:
+            print("❌ Fim da janela de retry sem o mês alvo — verificar a fonte MDIC.")
+            sys.exit(1)
 
     print("\n" + "=" * 60)
     print("CONCLUÍDO")
