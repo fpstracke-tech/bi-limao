@@ -15,7 +15,8 @@ RESEND_API_KEY = os.environ["RESEND_API_KEY"]
 
 DASHBOARD_URL = "https://bilimao.tfruits.com.br"
 FROM_EMAIL    = "reports@tradeconnex.com"
-TO_EMAILS     = ["felipe.passos@tradeconnex.com"]
+# TESTE/VALIDAÇÃO — após aprovar, voltar para a lista definitiva
+TO_EMAILS     = ["fpstracke@gmail.com"]
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
@@ -50,7 +51,7 @@ semana_num, ano_num = fetch_ultima_semana()
 semana_label = f"S{semana_num}/{ano_num}" if semana_num else hoje.strftime('%d/%m/%Y')
 SUBJECT = f"📊 Relatório Semanal BI Limão — {semana_label}"
 
-# Abas a capturar: (data-page, label)
+# Abas a capturar: (data-page, label) — TODAS as abas do dashboard
 ABAS = [
     ("brasil",        "Preços Brasil"),
     ("chile",         "Preços Chile"),
@@ -59,6 +60,7 @@ ABAS = [
     ("containers",    "Containers"),
     ("clima-local",   "Clima Local"),
     ("clima-global",  "Clima Global"),
+    ("status",        "Status ETLs"),
 ]
 
 # ── Screenshot via Playwright ────────────────────────────────────────────────
@@ -80,6 +82,18 @@ def capturar_screenshots():
         page.wait_for_selector(".kpi-card, .kpi-value, canvas", timeout=30000)
         page.wait_for_timeout(3000)  # aguarda animações
 
+        # Modo relatório: esconde navegação e desliga animações,
+        # para o full-page screenshot sair limpo e completo
+        page.add_style_tag(content="""
+            .sidebar, .mobile-bar { display: none !important; }
+            .app  { display: block !important; }
+            .main { padding: 1.5rem 2rem 2rem !important; }
+            *, *::before, *::after {
+                animation: none !important;
+                transition: none !important;
+            }
+        """)
+
         # Tempo de espera por aba (ms) — Chile demora mais por buscar câmbio externo
         WAIT = {
             "chile": 8000,
@@ -89,8 +103,10 @@ def capturar_screenshots():
         for data_page, label in ABAS:
             print(f"  Capturando: {label}...")
 
-            # Clica na sidebar (nav-item), não na barra mobile
-            page.click(f'.nav-item[data-page="{data_page}"]')
+            # Sidebar está oculta no modo relatório: navega via JS
+            page.evaluate(
+                f'document.querySelector(\'.nav-item[data-page="{data_page}"]\').click()'
+            )
             wait_ms = WAIT.get(data_page, DEFAULT_WAIT)
             page.wait_for_timeout(wait_ms)
 
@@ -100,8 +116,8 @@ def capturar_screenshots():
             except Exception:
                 pass
 
-            # Screenshot da viewport
-            png = page.screenshot(full_page=False)
+            # Screenshot da página INTEIRA — nada fica abaixo da dobra
+            png = page.screenshot(full_page=True)
             screenshots.append((label, png))
             print(f"    ✓ {len(png):,} bytes")
 
@@ -110,15 +126,70 @@ def capturar_screenshots():
     return screenshots
 
 # ── Montar PDF com Pillow ────────────────────────────────────────────────────
-def montar_pdf(screenshots):
-    from PIL import Image, ImageDraw, ImageFont
+PAGE_W = 1440  # largura padrão das páginas do PDF
 
-    pages = []
+def _font(size, bold=False):
+    """DejaVu está presente no runner ubuntu-latest; fallback pro default."""
+    from PIL import ImageFont
+    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    try:
+        return ImageFont.truetype(name, size)
+    except Exception:
+        return ImageFont.load_default()
+
+def montar_capa():
+    """Capa no padrão TFruits: fundo dark, logo, semana e sumário."""
+    from PIL import Image, ImageDraw
+
+    BG, GREEN, TEXT, TEXT2 = "#090C09", "#4CAE4F", "#F0F4F0", "#8A9A8A"
+    capa = Image.new("RGB", (PAGE_W, 900), BG)
+    d = ImageDraw.Draw(capa)
+
+    # Logo centralizado no topo — remove o fundo branco pro dark mode
+    logo = Image.open(io.BytesIO(base64.b64decode(LOGO_B64))).convert("RGBA")
+    px = logo.getdata()
+    logo.putdata([
+        (r, g, b, 0) if r > 235 and g > 235 and b > 235 else (r, g, b, a)
+        for r, g, b, a in px
+    ])
+    logo.thumbnail((260, 130))
+    capa.paste(logo, ((PAGE_W - logo.width) // 2, 130), logo)
+
+    # Título e subtítulo
+    d.text((PAGE_W / 2, 340), "BI Limão — Relatório Semanal",
+           font=_font(44, bold=True), fill=TEXT, anchor="mm")
+    d.text((PAGE_W / 2, 400), f"{semana_label}  ·  {DATA_PT}",
+           font=_font(24), fill=GREEN, anchor="mm")
+
+    # Linha divisória
+    d.line([(PAGE_W / 2 - 200, 450), (PAGE_W / 2 + 200, 450)],
+           fill="#1E241E", width=2)
+
+    # Sumário das seções
+    y = 500
+    for i, (_, label) in enumerate(ABAS, 1):
+        d.text((PAGE_W / 2, y), f"{i:02d}  ·  {label}",
+               font=_font(19), fill=TEXT2, anchor="mm")
+        y += 36
+
+    d.text((PAGE_W / 2, 850), "TFruits · Tradeconnex — gerado automaticamente",
+           font=_font(15), fill="#5A6A5A", anchor="mm")
+    return capa
+
+def montar_pdf(screenshots):
+    from PIL import Image
+
+    pages = [montar_capa()]
     for label, png_bytes in screenshots:
         img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+        # Normaliza largura (full_page pode variar a altura, nunca a largura,
+        # mas garante uniformidade caso o viewport mude)
+        if img.width != PAGE_W:
+            ratio = PAGE_W / img.width
+            img = img.resize((PAGE_W, int(img.height * ratio)))
         pages.append(img)
 
-    if not pages:
+    if len(pages) < 2:
         raise ValueError("Nenhum screenshot capturado")
 
     buf = io.BytesIO()
