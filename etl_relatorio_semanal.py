@@ -68,7 +68,7 @@ ABAS = [
 def capturar_screenshots():
     from playwright.sync_api import sync_playwright
 
-    screenshots = []  # lista de (label, bytes PNG)
+    screenshots = []  # lista de (label, bytes PNG, boxes dos cards)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -121,10 +121,21 @@ def capturar_screenshots():
             except Exception:
                 pass
 
+            # Posição dos cards: usada para paginar sem cortar card no meio
+            boxes = page.evaluate("""
+                () => Array.from(
+                    document.querySelectorAll('.card-shell, .page-header')
+                ).map(e => {
+                    const r = e.getBoundingClientRect();
+                    return { top:    r.top    + window.scrollY,
+                             bottom: r.bottom + window.scrollY };
+                })
+            """)
+
             # Página inteira: nada fica abaixo da dobra
             png = page.screenshot(full_page=True)
-            screenshots.append((label, png))
-            print(f"    ok {len(png):,} bytes")
+            screenshots.append((label, png, boxes))
+            print(f"    ok {len(png):,} bytes, {len(boxes)} cards")
 
         browser.close()
 
@@ -144,15 +155,17 @@ BORDER  = "#1E241E"
 # com fallback para DejaVu se o download falhar.
 _PJS_BASE = "https://raw.githubusercontent.com/tokotype/PlusJakartaSans/master/fonts/ttf"
 _PJS = {
-    "regular":   "PlusJakartaSans-Regular.ttf",
-    "medium":    "PlusJakartaSans-Medium.ttf",
-    "semibold":  "PlusJakartaSans-SemiBold.ttf",
-    "bold":      "PlusJakartaSans-Bold.ttf",
-    "extrabold": "PlusJakartaSans-ExtraBold.ttf",
+    "regular":         "PlusJakartaSans-Regular.ttf",
+    "medium":          "PlusJakartaSans-Medium.ttf",
+    "semibold":        "PlusJakartaSans-SemiBold.ttf",
+    "bold":            "PlusJakartaSans-Bold.ttf",
+    "extrabold":       "PlusJakartaSans-ExtraBold.ttf",
+    "extrabolditalic": "PlusJakartaSans-ExtraBoldItalic.ttf",
 }
 _FALLBACK = {"regular": "DejaVuSans.ttf", "medium": "DejaVuSans.ttf",
              "semibold": "DejaVuSans-Bold.ttf", "bold": "DejaVuSans-Bold.ttf",
-             "extrabold": "DejaVuSans-Bold.ttf"}
+             "extrabold": "DejaVuSans-Bold.ttf",
+             "extrabolditalic": "DejaVuSans-BoldOblique.ttf"}
 
 def _font(size, weight="regular"):
     from PIL import ImageFont
@@ -182,21 +195,24 @@ def _tracked(draw, xy, txt, font, fill, tracking):
         x += draw.textlength(ch, font=font) + tracking
     return x
 
+ORANGE = "#F15A22"
+
 def montar_capa():
-    """Capa: dark, tipografia grande, logo em cartão branco."""
+    """Capa: dark, tipografia grande, marca TFruits tipográfica."""
     from PIL import Image, ImageDraw
 
     capa = Image.new("RGB", (PAGE_W, PAGE_H), BG)
     d = ImageDraw.Draw(capa)
     M = 130  # margem lateral
 
-    # Cartão branco com o logo (o PNG tem fundo branco: vira design, não defeito)
-    logo = Image.open(io.BytesIO(base64.b64decode(LOGO_B64))).convert("RGB")
-    logo.thumbnail((240, 124))
-    card_w, card_h = logo.width + 80, logo.height + 56
-    d.rounded_rectangle([M, 150, M + card_w, 150 + card_h],
-                        radius=26, fill="#FFFFFF")
-    capa.paste(logo, (M + 40, 150 + 28))
+    # Marca tipográfica: quadrado verde com T branco + Fruits laranja
+    # (mesmo desenho do logo, renderizado vetorialmente: nunca quebra)
+    sq = 88
+    d.rounded_rectangle([M, 150, M + sq, 150 + sq], radius=20, fill=GREEN)
+    d.text((M + sq / 2, 150 + sq / 2 - 2), "T",
+           font=_font(60, "extrabold"), fill="#FFFFFF", anchor="mm")
+    d.text((M + sq + 22, 150 + sq / 2), "Fruits",
+           font=_font(68, "extrabolditalic"), fill=ORANGE, anchor="lm")
 
     # Bloco de título
     y = 660
@@ -236,29 +252,46 @@ def montar_capa():
 
     return capa
 
-def _paginar(png_bytes):
-    """Fatia um screenshot em páginas de tamanho fixo PAGE_W x PAGE_H."""
+def _paginar(png_bytes, boxes=None):
+    """Fatia um screenshot em páginas PAGE_W x PAGE_H, quebrando ENTRE
+    cards (nunca no meio de um) quando as posições são conhecidas."""
     from PIL import Image
 
     img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    ratio = 1.0
     if img.width != PAGE_W:
         ratio = PAGE_W / img.width
         img = img.resize((PAGE_W, int(img.height * ratio)))
 
+    fundos = sorted(set(
+        int(b["bottom"] * ratio) for b in (boxes or [])
+    ))
+
+    RESPIRO = 28   # espaço extra depois do último card da página
+    MINIMO  = 300  # avanço mínimo por página (evita loop com card gigante)
+
     paginas = []
     y = 0
     while y < img.height:
-        chunk = img.crop((0, y, PAGE_W, min(y + PAGE_H, img.height)))
+        limite = y + PAGE_H
+        if limite >= img.height:
+            corte = img.height
+        else:
+            # último card que fecha dentro da página
+            candidatos = [f for f in fundos if y + MINIMO < f <= limite - RESPIRO]
+            corte = (max(candidatos) + RESPIRO) if candidatos else limite
+
+        chunk = img.crop((0, y, PAGE_W, min(corte, img.height)))
         canvas = Image.new("RGB", (PAGE_W, PAGE_H), BG)
         canvas.paste(chunk, (0, 0))
         paginas.append(canvas)
-        y += PAGE_H
+        y = corte
     return paginas
 
 def montar_pdf(screenshots):
     pages = [montar_capa()]
-    for label, png_bytes in screenshots:
-        pages.extend(_paginar(png_bytes))
+    for label, png_bytes, boxes in screenshots:
+        pages.extend(_paginar(png_bytes, boxes))
 
     if len(pages) < 2:
         raise ValueError("Nenhum screenshot capturado")
@@ -269,7 +302,8 @@ def montar_pdf(screenshots):
         format="PDF",
         save_all=True,
         append_images=pages[1:],
-        resolution=120,
+        # 96 DPI: zoom 100% dos leitores = 1:1 com os pixels capturados
+        resolution=96,
     )
     buf.seek(0)
     return buf.read()
