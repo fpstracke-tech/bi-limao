@@ -86,10 +86,25 @@ def capturar_screenshots():
         # Modo relatório: esconde navegação e acelera animações.
         # NAO usar `animation: none`: cards e page-header têm opacity:0
         # e dependem do fadeUp (forwards) para ficarem visíveis.
+        # html/body têm height:100% e .main overflow-y:auto no dashboard:
+        # sem liberar isso, o full_page só captura a viewport (conteúdo
+        # rolando escondido dentro do .main). Descoberto em 31/07/2026.
         page.add_style_tag(content="""
             .sidebar, .mobile-bar { display: none !important; }
-            .app  { display: block !important; }
-            .main { padding: 1.5rem 2rem 2rem !important; }
+            html, body {
+                height: auto !important;
+                overflow: visible !important;
+            }
+            .app {
+                display: block !important;
+                height: auto !important;
+                min-height: 0 !important;
+            }
+            .main {
+                overflow: visible !important;
+                height: auto !important;
+                padding: 1.5rem 2rem 2rem !important;
+            }
             * {
                 animation-duration: 0.01s !important;
                 animation-delay: 0s !important;
@@ -133,9 +148,13 @@ def capturar_screenshots():
             """)
 
             # Página inteira: nada fica abaixo da dobra
+            altura = page.evaluate(
+                "() => Math.max(document.body.scrollHeight,"
+                "               document.documentElement.scrollHeight)"
+            )
             png = page.screenshot(full_page=True)
             screenshots.append((label, png, boxes))
-            print(f"    ok {len(png):,} bytes, {len(boxes)} cards")
+            print(f"    ok {len(png):,} bytes, {len(boxes)} cards, {altura}px de altura")
 
         browser.close()
 
