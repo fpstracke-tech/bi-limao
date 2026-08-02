@@ -8,8 +8,7 @@ name: ETL Containers — dias úteis
 
 on:
   schedule:
-    - cron: '0 8 * * 1'      # Segunda às 05:00 BRT (08:00 UTC), 2h antes do relatório
-    - cron: '0 12 * * 2-5'   # Ter a sex às 09:00 BRT (12:00 UTC)
+    - cron: '0 8 * * *'   # Todos os dias às 05:00 BRT (08:00 UTC); na segunda, 2h antes do relatório
   workflow_dispatch:
 
 jobs:

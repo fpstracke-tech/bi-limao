@@ -2317,10 +2317,10 @@ const STATUS_THRESHOLDS = {
   'brasil_precos':         { label: 'Preços Brasil',   emoji: '🇧🇷', amarelo: 200,  vermelho: 360  },
   'chile_precos':          { label: 'Preços Chile',    emoji: '🇨🇱', amarelo: 200,  vermelho: 360  },
   'europa_precos':         { label: 'Preços Europa',   emoji: '🇪🇺', amarelo: 200,  vermelho: 360  },
-  // dias úteis — maior intervalo é sex→seg = 72h
-  'containers':            { label: 'Containers',      emoji: '🚢', amarelo: 80,   vermelho: 120  },
-  // mensal (dia 10)
-  'comexstat_exportacoes': { label: 'Share Brasil',    emoji: '📦', amarelo: 600,  vermelho: 900  },
+  // diário (05h BRT) — 24h de ciclo + folga
+  'containers':            { label: 'Containers',      emoji: '🚢', amarelo: 30,   vermelho: 48   },
+  // mensal com janela de retry (dias 10-20) — ciclo ~31d = 744h + folga
+  'comexstat_exportacoes': { label: 'Share Brasil',    emoji: '📦', amarelo: 800,  vermelho: 1200 },
   // seg/qua/sex — maior intervalo é sex→seg = 72h
   'clima_brasil_atual':    { label: 'Clima Local',     emoji: '🌤', amarelo: 80,   vermelho: 120  },
   'clima_brasil_forecast': { label: 'Clima Forecast',  emoji: '📅', amarelo: 80,   vermelho: 120  },

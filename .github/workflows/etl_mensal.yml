@@ -2,7 +2,10 @@ name: ETL Mensal — Comexstat
 
 on:
   schedule:
-    - cron: '0 10 10 * *'  # Todo dia 10 do mês às 07:00 BRT (10:00 UTC)
+    # Janela de retry: dias 10 a 20 às 07:00 BRT (10:00 UTC).
+    # O script detecta se o mês alvo já está no banco e encerra sem coletar;
+    # se a fonte ainda não publicou, tenta de novo no dia seguinte.
+    - cron: '0 10 10-20 * *'
   workflow_dispatch:
 
 jobs:
@@ -34,6 +37,9 @@ jobs:
 
       - name: ETL Comexstat
         id: comexstat
+        env:
+          # Disparo manual ignora o "mês já no banco" e força coleta completa
+          COMEXSTAT_FORCAR: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
         run: python etl_comexstat.py
 
       - name: Resumo
