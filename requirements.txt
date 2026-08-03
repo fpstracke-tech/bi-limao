@@ -1,4 +1,5 @@
 requests
+curl_cffi
 pandas
 openpyxl
 playwright

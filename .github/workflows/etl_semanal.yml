@@ -42,15 +42,20 @@ jobs:
         id: brasil
         run: python etl_hfbrasil.py
 
+      # !cancelled(): uma fonte falhar não pode pular as outras
+      # (03/08/2026: 403 do HF Brasil derrubou Chile e Europa juntos)
       - name: ETL Preços Chile (ODEPA)
         id: chile
+        if: ${{ !cancelled() }}
         run: python pipeline_odepa_limon.py
 
       - name: Instalar Playwright (necessário para Europa)
+        if: ${{ !cancelled() }}
         run: playwright install --with-deps chromium
 
       - name: ETL Preços Europa (FranceAgriMer)
         id: europa
+        if: ${{ !cancelled() }}
         run: python etl_europa_franceagrimer.py
 
       - name: Resumo Preços

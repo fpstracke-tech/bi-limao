@@ -23,6 +23,7 @@ Saída:
 import csv
 import io
 import sys
+import time
 from datetime import date, datetime, timedelta, timezone
 
 import requests
@@ -43,13 +44,20 @@ URL = (
 PRODUTO_FILTRO = "Lima Ácida Tahiti - Colhida - Mercado"
 OUTPUT_CSV = "brasil_precos.csv"
 
+PAGINA_REFERER = "https://www.hfbrasil.org.br/br/estatistica/preco.aspx"
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/125.0.0.0 Safari/537.36"
     ),
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,*/*;q=0.8"
+    ),
     "Accept-Language": "pt-BR,pt;q=0.9",
+    "Referer": PAGINA_REFERER,
 }
 
 
@@ -67,15 +75,72 @@ def week_of_year_pq(d: date) -> int:
     return (d - inicio_semana1).days // 7 + 1
 
 
-def baixar_xlsx() -> bytes:
-    print(f"    GET {URL[:80]}...")
-    r = requests.get(URL, headers=HEADERS, timeout=60)
+def _validar_xlsx(content: bytes, content_type: str) -> bytes:
+    if "spreadsheet" not in content_type and content[:2] != b"PK":
+        raise RuntimeError(f"Resposta não é xlsx (content-type: {content_type})")
+    print(f"    OK — {len(content):,} bytes")
+    return content
+
+
+def _baixar_requests() -> bytes:
+    """Sessão aquecida: GET na página de estatística primeiro (cookies do WAF)."""
+    s = requests.Session()
+    s.headers.update(HEADERS)
+    try:
+        s.get(PAGINA_REFERER, timeout=30)
+    except requests.RequestException:
+        pass  # warm-up é best-effort; o download decide
+    r = s.get(URL, timeout=60)
     r.raise_for_status()
-    ct = r.headers.get("content-type", "")
-    if "spreadsheet" not in ct and not r.content[:2] == b"PK":
-        raise RuntimeError(f"Resposta não é xlsx (content-type: {ct})")
-    print(f"    OK — {len(r.content):,} bytes")
-    return r.content
+    return _validar_xlsx(r.content, r.headers.get("content-type", ""))
+
+
+def _baixar_curl_cffi() -> bytes:
+    """Fallback: TLS fingerprint de Chrome real (o WAF barra fingerprint de lib)."""
+    from curl_cffi import requests as creq
+    r = creq.get(
+        URL,
+        impersonate="chrome",
+        timeout=60,
+        headers={"Referer": PAGINA_REFERER, "Accept-Language": "pt-BR,pt;q=0.9"},
+    )
+    r.raise_for_status()
+    return _validar_xlsx(r.content, r.headers.get("content-type", ""))
+
+
+def baixar_xlsx() -> bytes:
+    """
+    O WAF do HF Brasil oscila (jul/2026: bloqueava o sandbox e liberava o
+    Actions; ago/2026: 403 nos runners do Actions). Defesa em camadas:
+      1. requests com sessão aquecida — 3 tentativas com backoff 20s/40s
+      2. curl_cffi impersonando Chrome — 2 tentativas
+    """
+    print(f"    GET {URL[:80]}...")
+    ultimo_erro = None
+
+    for tentativa in range(1, 4):
+        try:
+            return _baixar_requests()
+        except Exception as e:
+            ultimo_erro = e
+            print(f"    Tentativa {tentativa}/3 (requests) falhou: {e}")
+            if tentativa < 3:
+                time.sleep(20 * tentativa)
+
+    print("    Fallback: curl_cffi (impersonate Chrome)...")
+    for tentativa in range(1, 3):
+        try:
+            return _baixar_curl_cffi()
+        except ImportError:
+            print("    curl_cffi não instalado — adicione ao requirements.txt")
+            break
+        except Exception as e:
+            ultimo_erro = e
+            print(f"    Tentativa {tentativa}/2 (curl_cffi) falhou: {e}")
+            if tentativa < 2:
+                time.sleep(30)
+
+    raise RuntimeError(f"Download falhou em todas as camadas: {ultimo_erro}")
 
 
 # ── PARSE ──────────────────────────────────────────────────────────────────────
