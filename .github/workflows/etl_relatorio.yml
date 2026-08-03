@@ -1,13 +1,30 @@
 name: ETL Relatório Semanal — Email PDF
 
+# Encadeado por DEPENDÊNCIA, não por relógio (03/08/2026): o cron '0 10 * * 1'
+# foi pulado pelo GitHub (skip em minuto cheio sob carga) e os crons das 8h UTC
+# atrasaram ~3h10 — a folga de 2h entre ETLs e relatório não é garantia.
+# Agora o relatório dispara quando o "ETL Semanal — Preços" termina: se o cron
+# atrasar, tudo desliza junto na ordem certa; se o ETL falhar, o relatório não
+# sai com dado velho (a issue de falha do ETL já avisa).
+# O ETL Semanal é o mais longo do lote das 8h UTC (3 scrapers + playwright),
+# então containers/clima do mesmo lote terminam antes dele.
+
 on:
-  schedule:
-    - cron: '0 10 * * 1'  # Toda segunda-feira às 07:00 BRT (10:00 UTC)
+  workflow_run:
+    workflows: ["ETL Semanal — Preços"]
+    types: [completed]
   workflow_dispatch:
 
 jobs:
   relatorio:
     name: Gerar e Enviar Relatório PDF
+    # Segue apenas runs AGENDADOS e com sucesso do ETL Semanal — re-runs manuais
+    # do ETL (ex.: correção no meio da semana) não reenviam o relatório.
+    # Reenvio manual: workflow_dispatch deste workflow.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'schedule')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
