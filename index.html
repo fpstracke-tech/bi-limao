@@ -1061,6 +1061,7 @@ function renderKpis(containerId, kpis) {
         <div class="kpi-value ${k.code ? 'kpi-value-code' : (String(k.value).length > 8 ? 'kpi-value-sm' : '')}">${k.value}</div>
         <div class="kpi-unit">${k.unit || ''}</div>
         ${k.trend != null ? `<div class="kpi-trend ${k.trend >= 0 ? 'up' : 'down'}">${k.trend >= 0 ? '▲' : '▼'} ${Math.abs(k.trend).toFixed(1)}%</div>` : ''}
+        ${k.hint ? `<div style="font-size:.66rem;line-height:1.35;color:#FFA726;margin-top:.45rem">⚠ ${k.hint}</div>` : ''}
       </div>
     </div>`).join('');
 }
@@ -1203,7 +1204,7 @@ function drawBrasilUlt4sem(data, regioes, curAno) {
 // ═══════════════════════════════════════════════════════════════
 async function loadChile() {
   const data = await sbFetch('chile_precos', {
-    select: 'fecha,semana,ano,mercado,precio,cambio',
+    select: 'fecha,semana,ano,mercado,precio,cambio,cambio_estimado',
     order: 'fecha.asc'
   });
 
@@ -1213,10 +1214,15 @@ async function loadChile() {
   // Câmbio híbrido (decisão 28/07/2026): se o registro tem `cambio` gravado
   // (dólar observado BCCh da data da observação — 2026+), usa ele; senão cai no
   // 980 fixo do PBI (dados 2023-2025, preserva comparabilidade histórica).
+  // `cambio_estimado` (31/08/2026): true quando o mindicador.cl estava fora do ar
+  // e o ETL reutilizou a última cotação BCCh conhecida para uma data posterior a
+  // ela. O preço é exibido normalmente — mas com ressalva, para ninguém tratar
+  // uma conversão extrapolada como cotação do dia.
   const CLP_USD_PBI = 980;
   data.forEach(d => {
     d.ano = +d.ano; d.semana = +d.semana;
     d.fx  = d.cambio ? +d.cambio : CLP_USD_PBI;
+    d.fxEst = !!d.cambio_estimado;
     d.precio = +(+d.precio * 4.5 / d.fx).toFixed(4);
   });
   // Câmbio médio efetivo do ano corrente (para exibição no KPI)
@@ -1257,16 +1263,25 @@ async function loadChile() {
     const prevRows = semPrev ? anoData.filter(d => d.semana === semPrev) : [];
     const avgPrevSem = prevRows.length ? prevRows.reduce((s,d) => s+d.precio, 0) / prevRows.length : 0;
     const trendLast  = avgPrevSem ? ((avgLast - avgPrevSem) / avgPrevSem) * 100 : null;
+    // Ressalva de câmbio extrapolado (ver comentário em loadChile)
+    const estLast = lastRows.some(d => d.fxEst);
+    const estAno  = anoData.filter(d => d.fxEst);
+    const semsEst = [...new Set(estAno.map(d => d.semana))].sort((a,b) => a-b);
     renderKpis('chile-kpis', [
-      { label: `Último preço — Sem ${lastSem}`, value: `US$ ${avgLast.toFixed(2)}`, unit: 'USD/cx 4,5kg', trend: trendLast },
+      { label: `Último preço — Sem ${lastSem}`, value: `US$ ${avgLast.toFixed(2)}`, unit: 'USD/cx 4,5kg', trend: trendLast,
+        hint: estLast ? 'Convertido com a última cotação BCCh disponível, não a da semana' : null },
       { label: 'Preço médio (últ. 4 sem)', value: `US$ ${avg4sem.toFixed(2)}`, unit: 'USD/cx 4,5kg', trend },
       { label: `Média anual ${ano}`,        value: `US$ ${avgAnual.toFixed(2)}`, unit: 'USD/cx 4,5kg' },
       { label: 'Mercados',                  value: mercados.length, unit: 'monitorados' },
       { label: 'Semana atual',              value: lastSem, unit: `/${ano}` },
       (() => {
         const fx = fxAno(ano);
+        const hintFx = semsEst.length
+          ? `Sem ${semsEst.join(', ')} com câmbio extrapolado — fonte de cotação `
+            + `indisponível na coleta; corrige no próximo ETL`
+          : null;
         return fx
-          ? { label: 'Câmbio médio', value: fx.toFixed(0), unit: `CLP/USD — observado BCCh` }
+          ? { label: 'Câmbio médio', value: fx.toFixed(0), unit: `CLP/USD — observado BCCh`, hint: hintFx }
           : { label: 'Câmbio',       value: CLP_USD_PBI,   unit: 'CLP/USD — fixo (histórico)' };
       })(),
     ]);
