@@ -65,16 +65,68 @@ CAMBIO_FIXO_PBI = 980  # usado só pelos dados 2023-2025 (cambio NULL no banco)
 
 
 # ── CÂMBIO (dólar observado BCCh) ─────────────────────────────────────────────
-def carregar_cambio(ano: int = ANO, tentativas: int = 3) -> dict[str, float]:
+def _preencher_dias_sem_cotacao(serie: dict[str, float], ano: int) -> dict[str, float]:
+    """Fill-forward: dias sem cotação (fim de semana, feriado) herdam a última
+    taxa anterior disponível — prática padrão de mercado."""
+    completo, anterior = {}, None
+    d, fim = date(ano, 1, 1), date(ano, 12, 31)
+    for dia in (d + timedelta(days=n) for n in range((fim - d).days + 1)):
+        iso = dia.isoformat()
+        if iso in serie:
+            anterior = serie[iso]
+        if anterior is not None:
+            completo[iso] = anterior
+    return completo
+
+
+def cambio_do_supabase(ano: int = ANO) -> dict[str, float]:
     """
-    Retorna {"AAAA-MM-DD": valor_clp_por_usd} com o dólar observado do BCCh.
+    Fallback: relê a série de câmbio já persistida em `chile_precos`.
 
-    A série só tem dias úteis — datas sem cotação (fim de semana, feriado) são
-    preenchidas com a última taxa anterior disponível (prática padrão de mercado).
+    Cada registro guarda o `cambio` da sua data, então o banco contém a própria
+    série do BCCh coletada nos runs anteriores — não é estimativa, é o mesmo dado
+    real, só mais antigo. Retorna {"AAAA-MM-DD": valor} sem fill-forward
+    (quem chama decide até onde extrapolar).
+    """
+    from supabase_upsert import SUPABASE_URL, SUPABASE_KEY
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise RuntimeError("SUPABASE_URL/SUPABASE_KEY ausentes — fallback indisponível")
 
-    Se a API falhar em todas as tentativas, levanta exceção: é melhor abortar do
-    que gravar 2026 com bases de câmbio misturadas. O ETL é full-refresh do ano,
-    então o run seguinte recupera tudo.
+    headers = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+    url = f"{SUPABASE_URL}/rest/v1/chile_precos"
+    params = {"select": "fecha,cambio", "ano": f"eq.{ano}",
+              "cambio": "not.is.null", "order": "fecha.asc"}
+
+    # PostgREST devolve no máximo 1000 linhas por página — paginar sempre.
+    serie, offset, PAGINA = {}, 0, 1000
+    while True:
+        r = requests.get(url, headers={**headers,
+                                       "Range-Unit": "items",
+                                       "Range": f"{offset}-{offset + PAGINA - 1}"},
+                         params=params, timeout=30)
+        r.raise_for_status()
+        lote = r.json()
+        for row in lote:
+            serie[row["fecha"][:10]] = float(row["cambio"])
+        if len(lote) < PAGINA:
+            break
+        offset += PAGINA
+    if not serie:
+        raise RuntimeError(f"nenhum câmbio de {ano} gravado em chile_precos")
+    return serie
+
+
+def carregar_cambio(ano: int = ANO, tentativas: int = 3) -> tuple[dict[str, float], str | None]:
+    """
+    Retorna (mapa, estimado_apos):
+      - mapa: {"AAAA-MM-DD": valor_clp_por_usd} com o dólar observado do BCCh
+      - estimado_apos: None quando a API respondeu; ISO da última cotação REAL
+        quando caímos no fallback do Supabase (datas depois dela são extrapolação)
+
+    Se o mindicador.cl estiver fora do ar, em vez de abortar o ETL inteiro
+    reutilizamos a série já gravada em `chile_precos` e marcamos como estimadas
+    apenas as datas posteriores à última cotação conhecida. Preço com câmbio
+    carregado e sinalizado é melhor que uma semana sem Chile no dashboard.
     """
     ultimo_erro = None
     for i in range(tentativas):
@@ -84,27 +136,29 @@ def carregar_cambio(ano: int = ANO, tentativas: int = 3) -> dict[str, float]:
             serie = {p["fecha"][:10]: float(p["valor"]) for p in r.json()["serie"]}
             if not serie:
                 raise ValueError("série de câmbio vazia")
-            # Preenche dias sem cotação com a última taxa anterior
-            completo, anterior = {}, None
-            d, fim = date(ano, 1, 1), date(ano, 12, 31)
-            for dia in (d + timedelta(days=n) for n in range((fim - d).days + 1)):
-                iso = dia.isoformat()
-                if iso in serie:
-                    anterior = serie[iso]
-                if anterior is not None:
-                    completo[iso] = anterior
             print(f"    Câmbio BCCh {ano}: {len(serie)} cotações "
                   f"(min {min(serie.values()):.1f} / max {max(serie.values()):.1f})")
-            return completo
+            return _preencher_dias_sem_cotacao(serie, ano), None
         except Exception as e:
             ultimo_erro = e
             print(f"    ⚠ câmbio tentativa {i+1}/{tentativas} falhou: {type(e).__name__}")
             if i < tentativas - 1:
                 time.sleep(10 * (i + 1))
-    raise RuntimeError(
-        f"Não foi possível obter o câmbio BCCh após {tentativas} tentativas "
-        f"({ultimo_erro}). Abortando sem gravar para não misturar bases de câmbio."
-    )
+
+    print(f"    ⚠ mindicador.cl indisponível ({type(ultimo_erro).__name__}) — "
+          f"usando fallback: série de câmbio já gravada em chile_precos")
+    try:
+        serie = cambio_do_supabase(ano)
+    except Exception as e:
+        raise RuntimeError(
+            f"Câmbio BCCh indisponível ({ultimo_erro}) e fallback do Supabase "
+            f"também falhou ({e}). Abortando sem gravar para não misturar "
+            f"bases de câmbio."
+        )
+    ultima_real = max(serie)
+    print(f"    Fallback: {len(serie)} cotações de {ano} no banco, "
+          f"última real {ultima_real} = {serie[ultima_real]:.2f} CLP/USD")
+    return _preencher_dias_sem_cotacao(serie, ano), ultima_real
 
 
 # ── DOWNLOAD ──────────────────────────────────────────────────────────────────
@@ -200,7 +254,8 @@ def _find_col(df, *candidates):
 
 
 def transform(df: pd.DataFrame, extracted_at: str,
-              cambio_map: dict[str, float] | None = None) -> list[dict]:
+              cambio_map: dict[str, float] | None = None,
+              estimado_apos: str | None = None) -> list[dict]:
     print(f"    Colunas CSV: {list(df.columns)}")
 
     # Coluna de produto — pode ser 'Producto', 'Producto ' etc.
@@ -300,6 +355,12 @@ def transform(df: pd.DataFrame, extracted_at: str,
             # Câmbio da DATA da observação — fica gravado por registro, então a
             # série não se revaloriza retroativamente nos runs seguintes.
             "cambio":       (cambio_map or {}).get(fecha_date.isoformat()),
+            # True só quando o câmbio veio do fallback E a data é posterior à
+            # última cotação real do BCCh (extrapolação). Fill-forward normal de
+            # fim de semana/feriado NÃO é marcado — é prática padrão de mercado.
+            "cambio_estimado": bool(
+                estimado_apos and fecha_date.isoformat() > estimado_apos
+            ),
             "extracted_at": extracted_at,
         })
 
@@ -350,15 +411,19 @@ def main():
     print(f"    {len(df)} linhas totais | colunas: {list(df.columns)}")
 
     print(f"[4] Carregando câmbio (dólar observado BCCh {ANO})...")
-    cambio_map = carregar_cambio()
+    cambio_map, estimado_apos = carregar_cambio()
 
     print("[5] Filtrando e transformando...")
-    records = transform(df, extracted_at, cambio_map)
+    records = transform(df, extracted_at, cambio_map, estimado_apos)
     print(f"    {len(records)} registros de LIMÓN")
     sem_cambio = sum(1 for r in records if r.get("cambio") is None)
     if sem_cambio:
         print(f"    ⚠ {sem_cambio} registros sem câmbio na data (frontend usará "
               f"{CAMBIO_FIXO_PBI} fixo) — verificar cobertura da série BCCh")
+    estimados = sum(1 for r in records if r.get("cambio_estimado"))
+    if estimados:
+        print(f"    ⚠ {estimados} registros com cambio_estimado=true (datas após "
+              f"{estimado_apos}) — reprocessar quando o mindicador.cl voltar")
 
     if not records:
         print("❌ Nenhum registro obtido.")
