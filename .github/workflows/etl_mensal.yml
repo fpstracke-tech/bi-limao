@@ -2,10 +2,11 @@ name: ETL Mensal — Comexstat
 
 on:
   schedule:
-    # Janela de retry: dias 10 a 20 às 07:00 BRT (10:00 UTC).
+    # Janela de retry: dias 10 a 20 às 07:22 BRT (10:22 UTC).
     # O script detecta se o mês alvo já está no banco e encerra sem coletar;
     # se a fonte ainda não publicou, tenta de novo no dia seguinte.
-    - cron: '0 10 10-20 * *'
+    # Minuto 22, não 0 — ver justificativa completa em etl_semanal.yml.
+    - cron: '22 10 10-20 * *'
   workflow_dispatch:
 
 jobs:

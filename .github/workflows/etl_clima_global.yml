@@ -8,7 +8,11 @@ name: ETL Clima Global — diário
 
 on:
   schedule:
-    - cron: '0 8 * * *'   # Todos os dias às 05:00 BRT (08:00 UTC), 2h antes do relatório na segunda
+    # Minuto 13, não 0 — ver justificativa completa em etl_semanal.yml
+    # (minuto cheio é o slot de maior contenção; em 31/08/2026 os três crons
+    # das 8h UTC foram pulados juntos). Espaçamento: global 13, local 19,
+    # containers 26, semanal 39, mensal 22 (10h UTC).
+    - cron: '13 8 * * *'   # Todos os dias às 05:13 BRT (08:13 UTC)
   workflow_dispatch:
 
 jobs:

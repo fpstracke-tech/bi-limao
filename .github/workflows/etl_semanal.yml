@@ -2,7 +2,13 @@ name: ETL Semanal — Preços
 
 on:
   schedule:
-    - cron: '0 8 * * 1'   # Toda segunda-feira às 05:00 BRT (08:00 UTC), 2h antes do relatório
+    # Minuto 39, não 0 (31/08/2026): o início da hora é o slot de maior contenção
+    # no agendador do GitHub — cron em minuto cheio é atrasado ou descartado. Em
+    # 31/08 os três crons das 8h UTC (este, containers e clima global) foram
+    # pulados juntos, ninguém rodou e o relatório semanal não saiu.
+    # Os minutos dos 5 workflows são espaçados de propósito: clima global 13,
+    # clima local 19, containers 26, este 39, mensal 22 (10h UTC). Não realinhar.
+    - cron: '39 8 * * 1'   # Toda segunda-feira às 05:39 BRT (08:39 UTC)
   workflow_dispatch:
     inputs:
       skip:

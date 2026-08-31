@@ -5,7 +5,7 @@ name: Atualizar tudo — manual
 # agendamento de cada fonte.
 #
 # Não tem `schedule` de propósito — os workflows individuais já têm a cadência
-# certa para cada fonte (clima diário/alternado, containers dias úteis, preços
+# certa para cada fonte (clima diário/alternado, containers diário, preços
 # semanal, Comexstat mensal). Agendar este aqui duplicaria execuções.
 #
 # Dispara via `gh workflow run` em vez de replicar os steps: assim existe uma

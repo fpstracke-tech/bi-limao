@@ -1,14 +1,19 @@
-name: ETL Containers — dias úteis
+name: ETL Containers — diário
 
-# Roda de segunda a sexta porque a fonte NÃO apenas acrescenta semanas: ela
-# revisa continuamente a semana em curso. Em 30/07/2026 a S31 saiu de 157 para
-# 284 containers em três dias, e a aba mostrava o número velho.
+# Roda TODOS OS DIAS porque a fonte NÃO apenas acrescenta semanas: ela revisa
+# continuamente a semana em curso. Em 30/07/2026 a S31 saiu de 157 para 284
+# containers em três dias, e a aba mostrava o número velho.
+# (Nome e comentário diziam "dias úteis" até 31/08/2026, mas o cron sempre foi
+# diário desde o commit 9156bef de 02/08 — corrigido para não enganar em
+# diagnóstico. Rodar no fim de semana é inofensivo e mantém a revisão em dia.)
 # Separado do ETL semanal de preços de propósito — Cepea, ODEPA e FranceAgriMer
 # publicam uma vez por semana, rodar diário lá não traria dado novo.
 
 on:
   schedule:
-    - cron: '0 8 * * *'   # Todos os dias às 05:00 BRT (08:00 UTC); na segunda, 2h antes do relatório
+    # Minuto 26, não 0 — ver justificativa completa em etl_semanal.yml.
+    # Espaçamento: global 13, local 19, este 26, semanal 39, mensal 22 (10h UTC).
+    - cron: '26 8 * * *'   # Todos os dias às 05:26 BRT (08:26 UTC)
   workflow_dispatch:
 
 jobs:
