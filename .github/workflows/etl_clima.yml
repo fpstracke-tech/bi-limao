@@ -13,6 +13,15 @@ on:
   # limao-clima-local, 08:19 UTC seg/qua/sex. Ver justificativa em etl_semanal.yml.
   repository_dispatch:
     types: [etl-clima-local]
+  # REDE DE SEGURANÇA (07/10/2026): o pg_cron está parado — o projeto Supabase
+  # "TI Tradeconnex" (cpmetvowdtqubehvueni) está INACTIVE e não responde, e o
+  # secret github_pat_actions nunca foi criado no Vault. Sem este schedule o
+  # Clima Local fica SEM NENHUM gatilho e simplesmente para de coletar.
+  # Quando o pg_cron voltar e um dispatch devolver 204, REMOVER este bloco:
+  # com os dois ativos o run dobra e estoura a cota da HG Brasil (10 req/dia,
+  # 8 por run), que é a razão original de ele não ter schedule.
+  schedule:
+    - cron: '19 8 * * 1,3,5'   # seg/qua/sex 05:19 BRT (08:19 UTC)
   # SEM bloco `schedule` de propósito — é o único ETL do repo onde rodar duas
   # vezes no mesmo dia é nocivo: a HG Brasil grátis dá 10 req/dia por chave e
   # cada run consome 8. Se o cron atrasado do GitHub caísse depois do
