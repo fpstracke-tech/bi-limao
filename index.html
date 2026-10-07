@@ -108,6 +108,12 @@
   }
   .page-title { font-size: 1.6rem; font-weight: 700; color: var(--text); line-height: 1.2; }
   .page-sub   { font-size: .8rem; color: var(--text-2); margin-top: .3rem; }
+  .page-note {
+    margin-top: .5rem; padding: .5rem .7rem; max-width: 70ch;
+    border-left: 2px solid var(--orange); border-radius: 0 6px 6px 0;
+    background: rgba(241,90,34,.07);
+    font-size: .72rem; line-height: 1.45; color: var(--text-2);
+  }
   .region-title { font-size: .78rem; font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: .08em; margin: 1.5rem 0 .6rem; }
   .region-title:first-of-type { margin-top: .5rem; }
 
@@ -360,6 +366,10 @@
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 14l3 3 4-7 3 4"/></svg>
       Preços Colômbia
     </div>
+    <div class="nav-item" data-page="peru">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 13l3 4 4-9 3 6"/></svg>
+      Preços Peru
+    </div>
     <div class="nav-item" data-page="europa">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a13.8 13.8 0 0 1 0 18M12 3a13.8 13.8 0 0 0 0 18"/></svg>
       Preços Europa
@@ -543,6 +553,47 @@
               <div class="filter-bar" id="colombia-filter"></div>
             </div>
             <div class="chart-wrap"><canvas id="chartColombiaLine"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PERU ────────────────────────────────────────────────── -->
+    <section class="page" id="page-peru">
+      <div class="page-header">
+        <div class="page-eyebrow">🇵🇪 EMMSA</div>
+        <div class="page-title">Preços Peru</div>
+        <div class="page-sub">Limón sutil — Gran Mercado Mayorista de Lima — USD/cx 4,5kg</div>
+        <div class="page-note" id="peru-nota">
+          Variedade diferente da nossa. O limón sutil é um limão ácido pequeno,
+          de consumo interno peruano, e não concorre com o Tahiti que exportamos.
+          Use esta aba para ler oferta e sazonalidade do Peru, não para comparar preço.
+        </div>
+      </div>
+      <div class="kpi-grid" id="peru-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
+      <div class="card-shell chart-card">
+        <div class="card-inner">
+          <div class="chart-header">
+            <span class="chart-title">Histórico por Ano — Média semanal USD/cx 4,5kg</span>
+            <select class="styled-select" id="peru-variedad-select"></select>
+          </div>
+          <div class="chart-wrap"><canvas id="chartPeruHistorico"></canvas></div>
+        </div>
+      </div>
+      <div class="two-col" style="margin-top:1rem">
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — Média das variedades (USD/cx 4,5kg)</span></div>
+            <div class="chart-wrap"><canvas id="chartPeruUlt4sem"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header">
+              <span class="chart-title">Volume Ingressado por Ano — TM/semana</span>
+              <div class="filter-bar" id="peru-filter"></div>
+            </div>
+            <div class="chart-wrap"><canvas id="chartPeruLine"></canvas></div>
           </div>
         </div>
       </div>
@@ -1743,6 +1794,174 @@ function drawColombiaUlt4sem(data, curAno) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ── PERU ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// A EMMSA cota limón sutil, que é outra fruta. A aba existe para ler oferta e
+// sazonalidade do Peru, por isso o terceiro gráfico é VOLUME, não preço.
+// LIMON TAHITI aparece na base (112 registros esporádicos entre 03/2023 e
+// 08/2024, série descontinuada) e fica fora da média por padrão: misturar as
+// duas frutas num mesmo número é o erro de leitura que esta aba tem que evitar.
+const PERU_FORA_DA_MEDIA = 'LIMON TAHITI';
+
+async function loadPeru() {
+  const data = await sbFetch('peru_precos', {
+    select: 'fecha,semana,ano,variedad,precio,volumen_t,cambio,cambio_estimado',
+    order: 'fecha.asc'
+  });
+
+  if (!data.length) { pageError('peru', new Error('Sem dados')); return; }
+
+  data.forEach(d => {
+    d.ano = +d.ano; d.semana = +d.semana;
+    d.fx  = +d.cambio;
+    d.fxEst = !!d.cambio_estimado;
+    d.precio = +(+d.precio * 4.5 / d.fx).toFixed(4);
+    d.volumen_t = d.volumen_t == null ? null : +d.volumen_t;
+  });
+
+  const sutil      = data.filter(d => d.variedad !== PERU_FORA_DA_MEDIA);
+  const variedades = [...new Set(data.map(d => d.variedad))].sort();
+  const anos       = [...new Set(sutil.map(d => d.ano))].sort((a,b) => a-b);
+  const curAno     = Math.max(...anos);
+
+  function renderPeruKpis(ano) {
+    const anoData = sutil.filter(d => d.ano === ano);
+    if (!anoData.length) return;
+    const lastSem  = Math.max(...anoData.map(d => d.semana));
+    const ult4     = [lastSem, lastSem-1, lastSem-2, lastSem-3].filter(s => s > 0);
+    const ult4data = anoData.filter(d => ult4.includes(d.semana));
+    const avg4sem  = ult4data.length ? ult4data.reduce((s,d) => s+d.precio, 0) / ult4data.length : 0;
+    const prev4    = [lastSem-4, lastSem-5, lastSem-6, lastSem-7].filter(s => s > 0);
+    const prev4d   = anoData.filter(d => prev4.includes(d.semana));
+    const avgPrev4 = prev4d.length ? prev4d.reduce((s,d) => s+d.precio, 0) / prev4d.length : 0;
+    const trend    = avgPrev4 ? ((avg4sem - avgPrev4) / avgPrev4) * 100 : null;
+    const avgAnual = anoData.reduce((s,d) => s+d.precio, 0) / anoData.length;
+    const sems     = [...new Set(anoData.map(d => d.semana))].sort((a,b) => a-b);
+    const lastRows = anoData.filter(d => d.semana === lastSem);
+    const avgLast  = lastRows.reduce((s,d) => s+d.precio, 0) / lastRows.length;
+    const semPrev  = sems[sems.length - 2];
+    const prevRows = semPrev ? anoData.filter(d => d.semana === semPrev) : [];
+    const avgPrevSem = prevRows.length ? prevRows.reduce((s,d) => s+d.precio, 0) / prevRows.length : 0;
+    const trendLast  = avgPrevSem ? ((avgLast - avgPrevSem) / avgPrevSem) * 100 : null;
+    // Volume: soma por semana, média das últimas 4 com dado
+    const volSem = {};
+    anoData.forEach(d => { if (d.volumen_t != null) volSem[d.semana] = (volSem[d.semana]||0) + d.volumen_t; });
+    const semsVol = Object.keys(volSem).map(Number).sort((a,b) => b-a).slice(0,4);
+    const volMedio = semsVol.length ? semsVol.reduce((s,k) => s+volSem[k], 0) / semsVol.length : 0;
+    const estLast = lastRows.some(d => d.fxEst);
+    const semsEst = [...new Set(anoData.filter(d => d.fxEst).map(d => d.semana))].sort((a,b) => a-b);
+    renderKpis('peru-kpis', [
+      { label: `Último preço — Sem ${lastSem}`, value: `US$ ${avgLast.toFixed(2)}`, unit: 'USD/cx 4,5kg', trend: trendLast,
+        hint: estLast ? 'Convertido com a última cotação disponível, não a da semana' : null },
+      { label: 'Preço médio (últ. 4 sem)', value: `US$ ${avg4sem.toFixed(2)}`,  unit: 'USD/cx 4,5kg', trend },
+      { label: `Média anual ${ano}`,       value: `US$ ${avgAnual.toFixed(2)}`, unit: 'USD/cx 4,5kg' },
+      { label: 'Volume (últ. 4 sem)',      value: volMedio.toFixed(0), unit: 'TM/semana' },
+      { label: 'Semana atual',             value: lastSem, unit: `/${ano}` },
+      (() => {
+        const rows = anoData.filter(d => d.fx);
+        const fx = rows.length ? rows.reduce((s,d) => s+d.fx, 0) / rows.length : null;
+        return { label: 'Câmbio médio', value: fx ? fx.toFixed(3) : '—',
+                 unit: 'PEN/USD — BCRP',
+                 hint: semsEst.length ? `Sem ${semsEst.join(', ')} com câmbio extrapolado` : null };
+      })(),
+    ]);
+  }
+
+  renderPeruKpis(curAno);
+
+  const sel = document.getElementById('peru-variedad-select');
+  sel.innerHTML = `<option value="">Limón sutil — média das variedades</option>` +
+    variedades.map(v => `<option value="${v}">${v}${v === PERU_FORA_DA_MEDIA ? ' (série descontinuada)' : ''}</option>`).join('');
+  sel.addEventListener('change', () => drawPeruHistorico(data, sel.value));
+  drawPeruHistorico(data, '');
+
+  drawPeruUlt4sem(sutil, curAno);
+
+  const ativosPe = setupChipsAnos('peru-filter', anos, (ativos) => {
+    renderPeruKpis(Math.max(...ativos));
+    drawPeruVolume(sutil, anos, ativos);
+  });
+  drawPeruVolume(sutil, anos, ativosPe);
+}
+
+function drawPeruHistorico(data, variedad) {
+  const base = variedad ? data.filter(d => d.variedad === variedad)
+                        : data.filter(d => d.variedad !== PERU_FORA_DA_MEDIA);
+  const anos    = [...new Set(base.map(d => d.ano))].sort((a,b) => a-b);
+  const semanas = [...new Set(base.map(d => d.semana))].sort((a,b) => a-b);
+  const datasets = anos.map((ano, i) =>
+    lineDs(String(ano), semanas.map(s => {
+      const rows = base.filter(d => d.ano === ano && d.semana === s);
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(4) : null;
+    }), PALETTE[i % PALETTE.length])
+  );
+  const curAno = Math.max(...anos);
+  const curSeries = semanas.map((s, i) => {
+    const rows = base.filter(d => d.ano === curAno && d.semana === s);
+    return { x: i, y: rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(4) : null };
+  });
+  const pred = predictLinear(curSeries, 4, 12);
+  const predLabels = Array.from({length:4}, (_,i) => `→S${semanas.at(-1)+i+1}`);
+  datasets.push(trendDs(`Tendência ${curAno}`, semanas.length, pred));
+
+  mkChart('chartPeruHistorico', {
+    type: 'line',
+    data: { labels: [...semanas.map(s=>`S${s}`), ...predLabels], datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}, tooltip:{...tooltipUSD, callbacks:{...tooltipUSD.callbacks,
+        footer: items => items.some(i=>i.dataset.label?.startsWith('Tendência')) ? '⚠ Estimativa — uso indicativo' : ''}}},
+      scales:scalesUSD, spanGaps:true }
+  });
+}
+
+function drawPeruUlt4sem(data, curAno) {
+  const curData = data.filter(d => d.ano === curAno);
+  const semanas = [...new Set(curData.map(d => d.semana))].sort((a,b) => b-a).slice(0,4).reverse();
+  const valores = semanas.map(s => {
+    const rows = curData.filter(d => d.semana === s);
+    return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(2) : 0;
+  });
+  const bg   = valores.map((_, i) => i === valores.length - 1 ? PALETTE[1] + 'BB' : PALETTE[0] + 'BB');
+  const bord = valores.map((_, i) => i === valores.length - 1 ? PALETTE[1] : PALETTE[0]);
+  mkChart('chartPeruUlt4sem', {
+    type: 'bar',
+    data: { labels: semanas.map(s => `Sem ${s}`), datasets: [{
+      label: 'Média das variedades', data: valores,
+      backgroundColor: bg, borderColor: bord,
+      borderWidth: 1, borderRadius: 6, borderSkipped: false }] },
+    plugins: [barValueLabels('$')],
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      layout:{padding:{top:18}},
+      plugins:{legend:{position:'bottom'}, tooltip: tooltipUSD},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
+        ticks:{callback: v => `$${v.toFixed(2)}`}} } }
+  });
+}
+
+// Volume ingressado: o dado mais útil desta aba. Soma por semana, uma linha
+// por ano, mesmos chips do resto do dashboard.
+function drawPeruVolume(data, anos, ativos) {
+  // setupChipsAnos devolve Set nos outros gráficos; normaliza para não depender disso
+  const sel = ativos instanceof Set ? ativos : new Set(ativos);
+  const semanas = [...new Set(data.map(d => d.semana))].sort((a,b) => a-b);
+  const datasets = anos.filter(a => sel.has(a)).map((ano, i) =>
+    lineDs(String(ano), semanas.map(s => {
+      const rows = data.filter(d => d.ano === ano && d.semana === s && d.volumen_t != null);
+      return rows.length ? +rows.reduce((sum,d)=>sum+d.volumen_t,0).toFixed(1) : null;
+    }), PALETTE[anos.indexOf(ano) % PALETTE.length])
+  );
+  mkChart('chartPeruLine', {
+    type: 'line',
+    data: { labels: semanas.map(s=>`S${s}`), datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'},
+        tooltip:{callbacks:{label: c => `${c.dataset.label}: ${c.parsed.y} TM`}}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
+        ticks:{callback: v => `${v} TM`}} }, spanGaps:true }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ── EUROPA ───────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════
 async function loadEuropa() {
@@ -2661,7 +2880,7 @@ async function loadContainers() {
 function pageError(page, err) {
   // Mostra erro visível na primeira área carregável da página
   const targets = {
-    brasil: 'brasil-kpis', chile: 'chile-kpis', mexico: 'mexico-kpis', colombia: 'colombia-kpis', europa: 'europa-kpis',
+    brasil: 'brasil-kpis', chile: 'chile-kpis', mexico: 'mexico-kpis', colombia: 'colombia-kpis', peru: 'peru-kpis', europa: 'europa-kpis',
     'clima-local': 'clima-cards', 'clima-global': 'clima-global-cards',
     share: 'share-kpis', containers: 'cont-resumo', status: 'status-grid'
   };
@@ -2682,6 +2901,7 @@ async function loadPage(page) {
     else if (page==='chile')        await loadChile();
     else if (page==='mexico')       await loadMexico();
     else if (page==='colombia')     await loadColombia();
+    else if (page==='peru')         await loadPeru();
     else if (page==='europa')       await loadEuropa();
     else if (page==='clima-local')  await loadClimaLocal();
     else if (page==='clima-global') await loadClimaGlobal();

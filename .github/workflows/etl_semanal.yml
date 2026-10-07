@@ -46,7 +46,7 @@ on:
 
 jobs:
   etl-precos:
-    name: Preços Brasil + Chile + Colômbia + Europa
+    name: Preços Brasil + Chile + México + Colômbia + Peru + Europa
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -83,12 +83,24 @@ jobs:
         if: ${{ !cancelled() }}
         run: python pipeline_odepa_limon.py
 
-      # Colômbia antes do Playwright: o ETL só usa requests, então uma falha
-      # na instalação do browser (que é só da Europa) não pode levá-lo junto.
+      # México e Colômbia antes do Playwright: os dois ETLs só usam requests,
+      # então uma falha na instalação do browser (que é só da Europa) não pode
+      # levá-los junto.
+      - name: ETL Preços México (SNIIM)
+        id: mexico
+        if: ${{ !cancelled() }}
+        run: python etl_mexico_sniim.py
+
+
       - name: ETL Preços Colômbia (SIPSA/DANE)
         id: colombia
         if: ${{ !cancelled() }}
         run: python etl_colombia_sipsa.py
+
+      - name: ETL Preços Peru (EMMSA)
+        id: peru
+        if: ${{ !cancelled() }}
+        run: python etl_peru_emmsa.py
 
       - name: Instalar Playwright (necessário para Europa)
         if: ${{ !cancelled() }}
@@ -104,7 +116,9 @@ jobs:
         run: |
           echo "Brasil:   ${{ steps.brasil.outcome }}"
           echo "Chile:    ${{ steps.chile.outcome }}"
+          echo "México:   ${{ steps.mexico.outcome }}"
           echo "Colômbia: ${{ steps.colombia.outcome }}"
+          echo "Peru:     ${{ steps.peru.outcome }}"
           echo "Europa:   ${{ steps.europa.outcome }}"
 
       - name: Abrir issue em caso de falha
@@ -115,7 +129,9 @@ jobs:
             const steps = {
               Brasil:  '${{ steps.brasil.outcome }}',
               Chile:   '${{ steps.chile.outcome }}',
+              Mexico:   '${{ steps.mexico.outcome }}',
               Colombia: '${{ steps.colombia.outcome }}',
+              Peru:     '${{ steps.peru.outcome }}',
               Europa:  '${{ steps.europa.outcome }}',
             };
             const failed = Object.entries(steps).filter(([,v]) => v === 'failure').map(([k]) => k);
