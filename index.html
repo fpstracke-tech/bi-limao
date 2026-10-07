@@ -352,6 +352,10 @@
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 12l3-3 4 4 3-6"/></svg>
       Preços Chile
     </div>
+    <div class="nav-item" data-page="mexico">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 15l3-6 4 4 3-5"/></svg>
+      Preços México
+    </div>
     <div class="nav-item" data-page="colombia">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 14l3 3 4-7 3 4"/></svg>
       Preços Colômbia
@@ -466,6 +470,42 @@
               <div class="filter-bar" id="chile-filter"></div>
             </div>
             <div class="chart-wrap"><canvas id="chartChileLine"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── MÉXICO ──────────────────────────────────────────────── -->
+    <section class="page" id="page-mexico">
+      <div class="page-header">
+        <div class="page-eyebrow">🇲🇽 SNIIM</div>
+        <div class="page-title">Preços México</div>
+        <div class="page-sub">Limón s/semilla (persa) — centrais de abasto — USD/cx 4,5kg</div>
+      </div>
+      <div class="kpi-grid" id="mexico-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
+      <div class="card-shell chart-card">
+        <div class="card-inner">
+          <div class="chart-header">
+            <span class="chart-title">Histórico por Ano — Média semanal USD/cx 4,5kg</span>
+            <select class="styled-select" id="mexico-mercado-select"></select>
+          </div>
+          <div class="chart-wrap"><canvas id="chartMexicoHistorico"></canvas></div>
+        </div>
+      </div>
+      <div class="two-col" style="margin-top:1rem">
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">Últimas 4 Semanas — Média dos mercados (USD/cx 4,5kg)</span></div>
+            <div class="chart-wrap"><canvas id="chartMexicoUlt4sem"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header">
+              <span class="chart-title">Evolução Semanal por Ano — USD/cx 4,5kg</span>
+              <div class="filter-bar" id="mexico-filter"></div>
+            </div>
+            <div class="chart-wrap"><canvas id="chartMexicoLine"></canvas></div>
           </div>
         </div>
       </div>
@@ -1401,6 +1441,147 @@ function drawChileUlt4sem(data, curAno) {
   mkChart('chartChileUlt4sem', {
     type: 'bar',
     data: { labels, datasets },
+    plugins: [barValueLabels('$')],
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      layout:{padding:{top:18}},
+      plugins:{legend:{position:'bottom'}, tooltip: tooltipUSD},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.04)'},
+        ticks:{callback: v => `$${v.toFixed(2)}`}} } }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── MÉXICO ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+async function loadMexico() {
+  const data = await sbFetch('mexico_precos', {
+    select: 'fecha,semana,ano,mercado,precio,cambio,cambio_estimado',
+    order: 'fecha.asc'
+  });
+
+  if (!data.length) { pageError('mexico', new Error('Sem dados')); return; }
+
+  // MXN/kg → USD/cx 4,5kg. O SNIIM já entrega o preço por quilo calculado
+  // (PreciosPorId=2), então a apresentação (caja de 20 kg, arpilla, kg) não
+  // muda a escala e as linhas do mesmo mercado podem ser promediadas.
+  // Cada registro guarda a cotação USD/MXN da sua data.
+  data.forEach(d => {
+    d.ano = +d.ano; d.semana = +d.semana;
+    d.fx  = +d.cambio;
+    d.fxEst = !!d.cambio_estimado;
+    d.precio = +(+d.precio * 4.5 / d.fx).toFixed(4);
+  });
+  const fxAno = (ano) => {
+    const rows = data.filter(d => d.ano === ano && d.fx);
+    return rows.length ? rows.reduce((s,d) => s+d.fx, 0) / rows.length : null;
+  };
+
+  const mercados = [...new Set(data.map(d => d.mercado).filter(Boolean))].sort();
+  const anos     = [...new Set(data.map(d => d.ano))].sort((a,b) => a-b);
+  const curAno   = Math.max(...anos);
+
+  function renderMexicoKpis(ano) {
+    const anoData  = data.filter(d => d.ano === ano);
+    if (!anoData.length) return;
+    const lastSem  = Math.max(...anoData.map(d => d.semana));
+    const ult4     = [lastSem, lastSem-1, lastSem-2, lastSem-3].filter(s => s > 0);
+    const ult4data = anoData.filter(d => ult4.includes(d.semana));
+    const avg4sem  = ult4data.length ? ult4data.reduce((s,d) => s+d.precio, 0) / ult4data.length : 0;
+    const prev4    = [lastSem-4, lastSem-5, lastSem-6, lastSem-7].filter(s => s > 0);
+    const prev4d   = anoData.filter(d => prev4.includes(d.semana));
+    const avgPrev4 = prev4d.length ? prev4d.reduce((s,d) => s+d.precio, 0) / prev4d.length : 0;
+    const trend    = avgPrev4 ? ((avg4sem - avgPrev4) / avgPrev4) * 100 : null;
+    const avgAnual = anoData.reduce((s,d) => s+d.precio, 0) / anoData.length;
+    const semsComDado = [...new Set(anoData.map(d => d.semana))].sort((a,b) => a-b);
+    const lastRows = anoData.filter(d => d.semana === lastSem);
+    const avgLast  = lastRows.reduce((s,d) => s+d.precio, 0) / lastRows.length;
+    const semPrev  = semsComDado[semsComDado.length - 2];
+    const prevRows = semPrev ? anoData.filter(d => d.semana === semPrev) : [];
+    const avgPrevSem = prevRows.length ? prevRows.reduce((s,d) => s+d.precio, 0) / prevRows.length : 0;
+    const trendLast  = avgPrevSem ? ((avgLast - avgPrevSem) / avgPrevSem) * 100 : null;
+    const estLast = lastRows.some(d => d.fxEst);
+    const semsEst = [...new Set(anoData.filter(d => d.fxEst).map(d => d.semana))].sort((a,b) => a-b);
+    renderKpis('mexico-kpis', [
+      { label: `Último preço — Sem ${lastSem}`, value: `US$ ${avgLast.toFixed(2)}`, unit: 'USD/cx 4,5kg', trend: trendLast,
+        hint: estLast ? 'Convertido com a última cotação disponível, não a da semana' : null },
+      { label: 'Preço médio (últ. 4 sem)', value: `US$ ${avg4sem.toFixed(2)}`,  unit: 'USD/cx 4,5kg', trend },
+      { label: `Média anual ${ano}`,       value: `US$ ${avgAnual.toFixed(2)}`, unit: 'USD/cx 4,5kg' },
+      { label: 'Mercados',                 value: mercados.length, unit: 'monitorados' },
+      { label: 'Semana atual',             value: lastSem, unit: `/${ano}` },
+      (() => {
+        const fx = fxAno(ano);
+        const hintFx = semsEst.length
+          ? `Sem ${semsEst.join(', ')} com câmbio extrapolado — cotação indisponível `
+            + `na coleta; corrige no próximo ETL`
+          : null;
+        return { label: 'Câmbio médio', value: fx ? fx.toFixed(2) : '—',
+                 unit: 'MXN/USD — BCE', hint: hintFx };
+      })(),
+    ]);
+  }
+
+  renderMexicoKpis(curAno);
+
+  const selMerc = document.getElementById('mexico-mercado-select');
+  selMerc.innerHTML = `<option value="">Todos os mercados (média)</option>` +
+    mercados.map(m => `<option value="${m}">${m}</option>`).join('');
+  selMerc.addEventListener('change', () => drawMexicoHistorico(data, anos, selMerc.value));
+  drawMexicoHistorico(data, anos, '');
+
+  drawMexicoUlt4sem(data, curAno);
+
+  const ativosMx = setupChipsAnos('mexico-filter', anos, (ativos) => {
+    renderMexicoKpis(Math.max(...ativos));
+    drawEvolucaoAnos('chartMexicoLine', data, 'precio', anos, ativos, tooltipUSD, scalesUSD);
+  });
+  drawEvolucaoAnos('chartMexicoLine', data, 'precio', anos, ativosMx, tooltipUSD, scalesUSD);
+}
+
+function drawMexicoHistorico(data, anos, mercado) {
+  const filtered = mercado ? data.filter(d => d.mercado === mercado) : data;
+  const semanas  = [...new Set(filtered.map(d => d.semana))].sort((a,b) => a-b);
+  const datasets = anos.map((ano, i) =>
+    lineDs(String(ano), semanas.map(s => {
+      const rows = filtered.filter(d => d.ano === ano && d.semana === s);
+      return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(4) : null;
+    }), PALETTE[i % PALETTE.length])
+  );
+
+  const curAno = Math.max(...anos);
+  const curSeries = semanas.map((s, i) => {
+    const rows = filtered.filter(d => d.ano === curAno && d.semana === s);
+    return { x: i, y: rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(4) : null };
+  });
+  const pred = predictLinear(curSeries, 4, 12);
+  const predLabels = Array.from({length:4}, (_,i) => `→S${semanas.at(-1)+i+1}`);
+  datasets.push(trendDs(`Tendência ${curAno}`, semanas.length, pred));
+
+  mkChart('chartMexicoHistorico', {
+    type: 'line',
+    data: { labels: [...semanas.map(s=>`S${s}`), ...predLabels], datasets },
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom'}, tooltip:{...tooltipUSD, callbacks:{...tooltipUSD.callbacks,
+        footer: items => items.some(i=>i.dataset.label?.startsWith('Tendência')) ? '⚠ Estimativa — uso indicativo' : ''}}},
+      scales:scalesUSD, spanGaps:true }
+  });
+}
+
+function drawMexicoUlt4sem(data, curAno) {
+  const curData = data.filter(d => d.ano === curAno);
+  const semanas = [...new Set(curData.map(d => d.semana))].sort((a,b) => b-a).slice(0,4).reverse();
+  const labels  = semanas.map(s => `Sem ${s}`);
+  const valores = semanas.map(s => {
+    const rows = curData.filter(d => d.semana === s);
+    return rows.length ? +(rows.reduce((sum,d)=>sum+d.precio,0)/rows.length).toFixed(2) : 0;
+  });
+  const bgColors   = valores.map((_, i) => i === valores.length - 1 ? PALETTE[1] + 'BB' : PALETTE[0] + 'BB');
+  const bordColors = valores.map((_, i) => i === valores.length - 1 ? PALETTE[1] : PALETTE[0]);
+  mkChart('chartMexicoUlt4sem', {
+    type: 'bar',
+    data: { labels, datasets: [{
+      label: 'Média dos mercados', data: valores,
+      backgroundColor: bgColors, borderColor: bordColors,
+      borderWidth: 1, borderRadius: 6, borderSkipped: false }] },
     plugins: [barValueLabels('$')],
     options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
       layout:{padding:{top:18}},
@@ -2480,7 +2661,7 @@ async function loadContainers() {
 function pageError(page, err) {
   // Mostra erro visível na primeira área carregável da página
   const targets = {
-    brasil: 'brasil-kpis', chile: 'chile-kpis', colombia: 'colombia-kpis', europa: 'europa-kpis',
+    brasil: 'brasil-kpis', chile: 'chile-kpis', mexico: 'mexico-kpis', colombia: 'colombia-kpis', europa: 'europa-kpis',
     'clima-local': 'clima-cards', 'clima-global': 'clima-global-cards',
     share: 'share-kpis', containers: 'cont-resumo', status: 'status-grid'
   };
@@ -2499,6 +2680,7 @@ async function loadPage(page) {
   try {
     if (page==='brasil')            await loadBrasil();
     else if (page==='chile')        await loadChile();
+    else if (page==='mexico')       await loadMexico();
     else if (page==='colombia')     await loadColombia();
     else if (page==='europa')       await loadEuropa();
     else if (page==='clima-local')  await loadClimaLocal();

@@ -1,6 +1,34 @@
 name: ETL Semanal — Preços
 
 on:
+  # ======================================================================
+  # GATILHO PRIMÁRIO (01/09/2026): pg_cron do Supabase, projeto "TI Tradeconnex",
+  # job `limao-semanal` às 08:39 UTC de segunda → POST em /dispatches via pg_net.
+  #
+  # Por que saímos do cron do GitHub: ele é best-effort e, neste repo, deixou de
+  # ser utilizável. Medição pela REST API do Actions (campo created_at do run):
+  #   21-26/08  atraso de 16-40 min  (normal)
+  #   27/08     +10h29     28/08  +11h44
+  #   29/08     +5h27      30/08  +5h24
+  #   31/08     evento DESCARTADO — nenhum run agendado, relatório não saiu
+  #   01/09     evento DESCARTADO
+  # Os horários reais de disparo caíam sempre na mesma janela (13:24-13:28, ou
+  # 18:30-19:50) INDEPENDENTE do minuto configurado — ou seja, não é contenção
+  # de minuto cheio, é varredura em lote de fila de baixa prioridade. Prova:
+  # o bi-avocado, mesma conta, com crons em minuto CHEIO, rodou em 31/08.
+  # Descartados: billing (repo público = minutos ilimitados), workflow disabled
+  # (todos active), default branch (main), inatividade de 60 dias (commit
+  # diário), incidente aberto (status page operacional).
+  #
+  # A troca de minuto cheio → quebrado feita em 31/08 (commit 9073821) não
+  # resolveu nada. Mantida só porque não custa.
+  # ======================================================================
+  repository_dispatch:
+    types: [etl-semanal]
+  # Redundância — upsert idempotente nos 3 scrapers. Se o cron atrasado do
+  # GitHub cair horas depois, regrava o mesmo dado sem efeito colateral: o
+  # relatório NÃO segue runs de `schedule` (ver filtro em etl_relatorio.yml),
+  # justamente para não enviar o PDF duas vezes.
   schedule:
     # Minuto 39, não 0 (31/08/2026): o início da hora é o slot de maior contenção
     # no agendador do GitHub — cron em minuto cheio é atrasado ou descartado. Em
@@ -18,7 +46,7 @@ on:
 
 jobs:
   etl-precos:
-    name: Preços Brasil + Chile + Europa
+    name: Preços Brasil + Chile + Colômbia + Europa
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -55,6 +83,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: python pipeline_odepa_limon.py
 
+      # Colômbia antes do Playwright: o ETL só usa requests, então uma falha
+      # na instalação do browser (que é só da Europa) não pode levá-lo junto.
+      - name: ETL Preços Colômbia (SIPSA/DANE)
+        id: colombia
+        if: ${{ !cancelled() }}
+        run: python etl_colombia_sipsa.py
+
       - name: Instalar Playwright (necessário para Europa)
         if: ${{ !cancelled() }}
         run: playwright install --with-deps chromium
@@ -67,9 +102,10 @@ jobs:
       - name: Resumo Preços
         if: always()
         run: |
-          echo "Brasil:  ${{ steps.brasil.outcome }}"
-          echo "Chile:   ${{ steps.chile.outcome }}"
-          echo "Europa:  ${{ steps.europa.outcome }}"
+          echo "Brasil:   ${{ steps.brasil.outcome }}"
+          echo "Chile:    ${{ steps.chile.outcome }}"
+          echo "Colômbia: ${{ steps.colombia.outcome }}"
+          echo "Europa:   ${{ steps.europa.outcome }}"
 
       - name: Abrir issue em caso de falha
         if: failure()
@@ -79,6 +115,7 @@ jobs:
             const steps = {
               Brasil:  '${{ steps.brasil.outcome }}',
               Chile:   '${{ steps.chile.outcome }}',
+              Colombia: '${{ steps.colombia.outcome }}',
               Europa:  '${{ steps.europa.outcome }}',
             };
             const failed = Object.entries(steps).filter(([,v]) => v === 'failure').map(([k]) => k);

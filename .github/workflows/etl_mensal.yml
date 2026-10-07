@@ -1,6 +1,12 @@
 name: ETL Mensal — Comexstat
 
 on:
+  # GATILHO PRIMÁRIO (01/09/2026): pg_cron do Supabase "TI Tradeconnex", job
+  # limao-mensal, 10:22 UTC nos dias 10-20. Ver justificativa em etl_semanal.yml.
+  repository_dispatch:
+    types: [etl-mensal]
+  # Redundância — upsert idempotente e o script encerra sozinho se o mês alvo
+  # já está no banco, então run repetido não custa nem coleta.
   schedule:
     # Janela de retry: dias 10 a 20 às 07:22 BRT (10:22 UTC).
     # O script detecta se o mês alvo já está no banco e encerra sem coletar;

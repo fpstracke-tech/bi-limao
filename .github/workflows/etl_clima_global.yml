@@ -7,6 +7,13 @@ name: ETL Clima Global — diário
 # Separado do Clima Local de propósito — a HG Brasil só permite 10 req/dia.
 
 on:
+  # GATILHO PRIMÁRIO (01/09/2026): pg_cron do Supabase "TI Tradeconnex", job
+  # limao-clima-global, 08:13 UTC. Ver justificativa em etl_semanal.yml.
+  repository_dispatch:
+    types: [etl-clima-global]
+  # Redundância. O cron do GitHub é best-effort e chega horas atrasado ou nem
+  # chega, mas quando chega o upsert (on_conflict cidade,pais,data_hora) só
+  # regrava o mesmo dado — rodar duas vezes é inofensivo.
   schedule:
     # Minuto 13, não 0 — ver justificativa completa em etl_semanal.yml
     # (minuto cheio é o slot de maior contenção; em 31/08/2026 os três crons

@@ -18,13 +18,22 @@ on:
 jobs:
   relatorio:
     name: Gerar e Enviar Relatório PDF
-    # Segue apenas runs AGENDADOS e com sucesso do ETL Semanal — re-runs manuais
-    # do ETL (ex.: correção no meio da semana) não reenviam o relatório.
-    # Reenvio manual: workflow_dispatch deste workflow.
+    # Segue apenas o run do ETL Semanal disparado pelo AGENDADOR e com sucesso —
+    # re-runs manuais do ETL (ex.: correção no meio da semana) não reenviam o
+    # relatório. Reenvio manual: workflow_dispatch deste workflow.
+    #
+    # 01/09/2026: o gatilho do agendador passou de `schedule` (cron do GitHub,
+    # que virou inutilizável — ver etl_semanal.yml) para `repository_dispatch`
+    # (pg_cron do Supabase). O filtro aceita SÓ repository_dispatch de propósito:
+    # o cron do GitHub continua ligado como redundância de DADO no etl_semanal, e
+    # se aceitasse `schedule` também o PDF sairia duas vezes na segunda.
+    # Consequência assumida: se o pg_cron falhar e só o cron do GitHub rodar, os
+    # preços entram mas o relatório não sai — o monitor das 08h30 BRT detecta e
+    # o reenvio é um workflow_dispatch daqui.
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'schedule')
+       github.event.workflow_run.event == 'repository_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

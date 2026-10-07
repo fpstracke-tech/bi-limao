@@ -60,6 +60,7 @@ SUBJECT = f"Relatório Semanal BI Limão {semana_label}"
 ABAS = [
     ("brasil",        "Preços Brasil"),
     ("chile",         "Preços Chile"),
+    ("colombia",      "Preços Colômbia"),
     ("europa",        "Preços Europa"),
     ("share",         "Share Brasil"),
     ("containers",    "Containers"),
