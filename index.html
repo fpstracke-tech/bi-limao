@@ -287,25 +287,46 @@
   @keyframes pulse-rain { 0%,100%{opacity:1} 50%{opacity:.6} }
 
   /* ── MOBILE NAV ──────────────────────────────────────────────── */
-  .mobile-bar {
-    display: none; position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
-    background: rgba(20,25,20,.92); backdrop-filter: blur(20px);
-    border: 1px solid var(--border); border-radius: 99px;
-    padding: .5rem .75rem; gap: .25rem; z-index: 200;
-    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  /* No celular a navegação é a PRÓPRIA sidebar, aberta como gaveta pelo botão
+     flutuante. A barra de pills antiga foi removida em 07/10/2026: com 5
+     mercados seriam 11 itens de sigla (BR, CL, MX, CO, PE, EU...) num pill de
+     330px, ilegível e estourando a tela. Reaproveitar a sidebar mantém UMA
+     lista de navegação para manter e mostra o nome por extenso. */
+  .nav-fab {
+    display: none; position: fixed; left: 1rem; bottom: 1rem; z-index: 210;
+    width: 46px; height: 46px; border-radius: 50%;
+    align-items: center; justify-content: center;
+    background: rgba(20,25,20,.94); backdrop-filter: blur(20px);
+    border: 1px solid var(--border); color: var(--text);
+    box-shadow: 0 8px 32px rgba(0,0,0,.45);
+    cursor: pointer; transition: transform .2s, background .2s, left .4s var(--ease-spring);
   }
-  .mb-item {
-    display: flex; flex-direction: column; align-items: center; gap: .15rem;
-    padding: .4rem .6rem; border-radius: 99px; cursor: pointer;
-    font-size: .55rem; color: var(--text-3); transition: all .2s;
+  .nav-fab:active { transform: scale(.94); }
+  .nav-fab svg { width: 22px; height: 22px; }
+  /* Com a gaveta aberta o botão sai de cima do rodapé dela e vira "fechar" */
+  .nav-fab.open { left: calc(232px + .75rem); }
+  .nav-fab .ico-close, .nav-fab.open .ico-menu { display: none; }
+  .nav-fab.open .ico-close { display: block; }
+  .nav-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 90;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(2px);
+    opacity: 0; transition: opacity .3s;
   }
-  .mb-item.active { color: var(--green); background: var(--green-dim); }
-  .mb-icon { width: 18px; height: 18px; }
+  .nav-backdrop.open { opacity: 1; }
 
   /* ── RESPONSIVE ──────────────────────────────────────────────── */
   @media (max-width: 768px) {
-    .sidebar { display: none; }
-    .mobile-bar { display: flex; }
+    /* A sidebar não some: vira gaveta fora da tela, aberta pelo .nav-fab */
+    .sidebar {
+      position: fixed; top: 0; left: 0; height: 100dvh;
+      width: 232px; min-width: 232px;
+      transform: translateX(-100%);
+      box-shadow: 8px 0 32px rgba(0,0,0,.5);
+      overflow-y: auto;
+    }
+    .sidebar.open { transform: translateX(0); }
+    .nav-fab { display: flex; }
+    .nav-backdrop.open { display: block; }
     .main { padding: 1.25rem 1rem 5rem; }
     .kpi-grid { grid-template-columns: repeat(2, 1fr); }
     .chart-wrap { height: 200px; }
@@ -340,7 +361,7 @@
 <div class="app">
 
   <!-- ══ SIDEBAR ════════════════════════════════════════════════ -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
       <div class="logo-dot">T</div>
       <div>
@@ -358,23 +379,22 @@
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 12l3-3 4 4 3-6"/></svg>
       Preços Chile
     </div>
-    <div class="nav-item" data-page="mexico">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 15l3-6 4 4 3-5"/></svg>
-      Preços México
-    </div>
     <div class="nav-item" data-page="colombia">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 14l3 3 4-7 3 4"/></svg>
       Preços Colômbia
-    </div>
-    <div class="nav-item" data-page="peru">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 13l3 4 4-9 3 6"/></svg>
-      Preços Peru
     </div>
     <div class="nav-item" data-page="europa">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a13.8 13.8 0 0 1 0 18M12 3a13.8 13.8 0 0 0 0 18"/></svg>
       Preços Europa
     </div>
-
+    <div class="nav-item" data-page="mexico">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 15l3-6 4 4 3-5"/></svg>
+      Preços México
+    </div>
+    <div class="nav-item" data-page="peru">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 13l3 4 4-9 3 6"/></svg>
+      Preços Peru
+    </div>
     <div class="nav-section" style="margin-top:.75rem">Clima</div>
     <div class="nav-item" data-page="clima-local">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 0 1 0 9z"/></svg>
@@ -837,33 +857,12 @@
   </main>
 </div>
 
-<!-- ── MOBILE BOTTOM NAV ──────────────────────────────────────── -->
-<div class="mobile-bar">
-  <div class="mb-item active" data-page="brasil">
-    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-4"/></svg>BR
-  </div>
-  <div class="mb-item" data-page="chile">
-    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 12l3-3 4 4 3-6"/></svg>CL
-  </div>
-  <div class="mb-item" data-page="europa">
-    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8"/></svg>EU
-  </div>
-  <div class="mb-item" data-page="clima-local">
-    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 0 1 0 9z"/></svg>☁
-  </div>
-  <div class="mb-item" data-page="clima-global">
-    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>🌍
-  </div>
-  <div class="mb-item" data-page="share">
-    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/></svg>📦
-  </div>
-  <div class="mb-item" data-page="containers">
-    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 17h20M2 12h20M2 7h20"/><rect x="2" y="4" width="20" height="16" rx="1"/></svg>🚢
-  </div>
-  <div class="mb-item" data-page="status">
-    <svg class="mb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>⚙
-  </div>
-</div>
+<!-- ── NAVEGAÇÃO MOBILE: botão + fundo escuro que abrem a sidebar ── -->
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<button class="nav-fab" id="nav-fab" aria-label="Abrir menu" aria-expanded="false" aria-controls="sidebar">
+  <svg class="ico-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  <svg class="ico-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+</button>
 
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -993,13 +992,33 @@ const loaded   = {};
 function navigate(page) {
   if (page === activePage) return;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item, .mb-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
   document.getElementById(`page-${page}`).classList.add('active');
   activePage = page;
   if (!loaded[page]) { loaded[page] = true; loadPage(page); }
 }
 
 document.querySelectorAll('[data-page]').forEach(el => el.addEventListener('click', () => navigate(el.dataset.page)));
+
+// ── Gaveta de navegação (só existe abaixo de 768px, via CSS) ──
+const navSidebar  = document.getElementById('sidebar');
+const navFab      = document.getElementById('nav-fab');
+const navBackdrop = document.getElementById('nav-backdrop');
+
+function setNav(aberta) {
+  navSidebar.classList.toggle('open', aberta);
+  navBackdrop.classList.toggle('open', aberta);
+  navFab.classList.toggle('open', aberta);
+  navFab.setAttribute('aria-expanded', aberta ? 'true' : 'false');
+  navFab.setAttribute('aria-label', aberta ? 'Fechar menu' : 'Abrir menu');
+  document.body.style.overflow = aberta ? 'hidden' : '';
+}
+navFab.addEventListener('click', () => setNav(!navSidebar.classList.contains('open')));
+navBackdrop.addEventListener('click', () => setNav(false));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') setNav(false); });
+// Escolher uma aba fecha a gaveta. No desktop a classe 'open' não tem efeito,
+// então pode rodar sempre sem checar largura.
+navSidebar.querySelectorAll('[data-page]').forEach(el => el.addEventListener('click', () => setNav(false)));
 
 // ═══════════════════════════════════════════════════════════════
 // CHART FACTORY
