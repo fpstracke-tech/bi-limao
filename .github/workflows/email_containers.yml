@@ -1,17 +1,20 @@
 name: E-mail Containers — semanal
 
-# Envia o resumo semanal de chegadas de containers (Brasil para Europa e UK)
-# para o time comercial. Criado em 06/11/2026, substitui a página de imagem
+# Resumo semanal de chegadas de containers (Brasil para Europa e UK) para o
+# time comercial. Criado em 06/11/2026, substitui a página de imagem
 # "Containers Limão" do Power BI.
 #
-# Encadeado por DEPENDÊNCIA, igual ao relatório de preços: dispara quando o
-# "ETL Containers — diário" termina com sucesso, então nunca sai com dado velho
-# mesmo que o cron do GitHub atrase horas. Só segue em frente na SEGUNDA-FEIRA
-# (horário de Brasília), quando a semana anterior acabou de fechar.
-#
-# Idempotência: o ETL de containers pode rodar mais de uma vez no mesmo dia
-# (cron do GitHub + repository_dispatch do pg_cron, quando voltar). Um marcador
-# no cache do Actions por semana ISO garante um envio só por semana.
+# ENTREGA: toda SEGUNDA às 07:30 BRT (pedido do Felipe, 06/11/2026).
+# O cron do GitHub não garante horário (atrasos de horas e runs pulados, ver
+# etl_semanal.yml), então o horário fica com o RESEND:
+#   - DOMINGO: quando o "ETL Containers — diário" termina com sucesso, o e-mail
+#     é montado com a semana que fecha no domingo e AGENDADO no Resend
+#     (scheduled_at) para segunda 07:30. Folga de um dia inteiro para o cron.
+#   - SEGUNDA: rede de segurança. Se o run de domingo não aconteceu, envia
+#     assim que o ETL de segunda terminar (atrasado, mas não pula a semana).
+#   - Outros dias: não faz nada.
+# Idempotência: marcador no cache do Actions por semana ISO; o ETL pode rodar
+# mais de uma vez por dia e a segunda não reenvia o que o domingo agendou.
 #
 # Remetente reports@tfruits.com.br: o domínio está verificado em OUTRA conta
 # Resend, por isso a chave é RESEND_API_KEY_TFRUITS (não a RESEND_API_KEY do
@@ -52,19 +55,26 @@ jobs:
       PYTHONIOENCODING:       utf-8
 
     steps:
-      - name: Segunda-feira? (BRT) e chave da semana
+      - name: Qual dia (BRT) e qual semana
         id: quando
         run: |
           DIA=$(TZ=America/Sao_Paulo date +%u)
-          # Na segunda, "7 dias atrás" cai na segunda da semana fechada.
-          SEMANA=$(TZ=America/Sao_Paulo date -d '7 days ago' +%G-W%V)
+          ENVIO_EM=""
+          if [ "$DIA" = "7" ]; then
+            SEMANA=$(TZ=America/Sao_Paulo date +%G-W%V)
+            ENVIO_EM="$(TZ=America/Sao_Paulo date -d tomorrow +%Y-%m-%d)T07:30:00-03:00"
+          else
+            # Na segunda, "7 dias atrás" cai na segunda da semana fechada.
+            SEMANA=$(TZ=America/Sao_Paulo date -d '7 days ago' +%G-W%V)
+          fi
           echo "dia=$DIA" >> "$GITHUB_OUTPUT"
           echo "semana=$SEMANA" >> "$GITHUB_OUTPUT"
-          echo "Dia da semana BRT: $DIA | semana fechada: $SEMANA"
+          echo "envio_em=$ENVIO_EM" >> "$GITHUB_OUTPUT"
+          echo "Dia BRT: $DIA | semana: $SEMANA | agendar para: ${ENVIO_EM:-agora}"
 
-      - name: Já enviado nesta semana?
+      - name: Já enviado ou agendado nesta semana?
         id: marcador
-        if: github.event_name == 'workflow_run' && steps.quando.outputs.dia == '1'
+        if: github.event_name == 'workflow_run' && (steps.quando.outputs.dia == '7' || steps.quando.outputs.dia == '1')
         uses: actions/cache/restore@v4
         with:
           path: .email_containers_enviado
@@ -76,11 +86,11 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "enviar=true" >> "$GITHUB_OUTPUT"
-          elif [ "${{ steps.quando.outputs.dia }}" != "1" ]; then
-            echo "Não é segunda-feira em Brasília, nada a fazer."
+          elif [ "${{ steps.quando.outputs.dia }}" != "7" ] && [ "${{ steps.quando.outputs.dia }}" != "1" ]; then
+            echo "Não é domingo nem segunda em Brasília, nada a fazer."
             echo "enviar=false" >> "$GITHUB_OUTPUT"
           elif [ "${{ steps.marcador.outputs.cache-hit }}" = "true" ]; then
-            echo "E-mail da semana ${{ steps.quando.outputs.semana }} já foi enviado."
+            echo "E-mail da semana ${{ steps.quando.outputs.semana }} já foi enviado ou agendado."
             echo "enviar=false" >> "$GITHUB_OUTPUT"
           else
             echo "enviar=true" >> "$GITHUB_OUTPUT"
@@ -102,6 +112,9 @@ jobs:
 
       - name: Gerar e enviar
         if: steps.decide.outputs.enviar == 'true'
+        env:
+          # Teste manual envia na hora; o agendamento é só do fluxo automático.
+          ENVIO_EM: ${{ github.event_name == 'workflow_run' && steps.quando.outputs.envio_em || '' }}
         run: python email_containers.py
 
       - name: Gravar marcador de envio

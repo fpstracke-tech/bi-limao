@@ -14,6 +14,11 @@ Variáveis de ambiente:
                                   tfruits.com.br está verificado
   EMAIL_TO                        opcional, sobrescreve destinatários (teste)
   DRY_RUN=1                       só gera email_containers.html, não envia
+  ENVIO_EM                        opcional, ISO 8601 (ex. 2026-11-09T07:30:00-03:00).
+                                  O e-mail é montado como se fosse esse momento e
+                                  fica AGENDADO no Resend para ele. Usado pelo run
+                                  de domingo para entregar segunda 07:30 sem
+                                  depender do cron do GitHub.
 """
 
 import os
@@ -211,7 +216,6 @@ def montar(semanal, totais, hoje):
 <td align="right" style="padding:12px 0 0;{rodape_borda}font-size:13px;color:{MU};{NUM}">{t(ano - 1)}</td>
 <td align="right" style="padding:12px 0 0;{rodape_borda}font-size:13px;color:{MU};{NUM}">{t(ano - 2)}</td></tr>
 </table></td></tr></table></td></tr>
-<tr><td style="padding:16px 5px 0;font-size:12px;line-height:1.6;color:{MU};">Semanas em curso e previstas podem ser revisadas. Série completa no <a href="{DASHBOARD_URL}" style="color:{G};font-weight:600;">BI Limão</a>.</td></tr>
 </table></td></tr></table></body></html>'''
 
     def txt_var(p):
@@ -222,15 +226,14 @@ def montar(semanal, totais, hoje):
         f"Semana {W}: {fmt(w_atual)}{txt_var(p_sem)}\n"
         f"WK {ult4[-1][1]} a {W}: {fmt(l4_atual)}{txt_var(pct(l4_atual, l4_ant))}\n"
         f"{acc_label}: {fmt(acc_atual)}{txt_var(pct(acc_atual, acc_ant))}\n"
-        f"Total do ano {ano}: {t(ano)} | {ano - 1}: {t(ano - 1)} | {ano - 2}: {t(ano - 2)}\n\n"
-        f"BI Limão: {DASHBOARD_URL}\n"
+        f"Total do ano {ano}: {t(ano)} | {ano - 1}: {t(ano - 1)} | {ano - 2}: {t(ano - 2)}\n"
     ).replace("&ndash;", "-")
 
     assunto = f"Containers Limão | Semana {W}/{ano}"
     return assunto, html, texto
 
 
-def enviar(assunto, html, texto):
+def enviar(assunto, html, texto, agendar=None):
     to = [e.strip() for e in os.environ.get("EMAIL_TO", "").split(",") if e.strip()]
     payload = {
         "from": FROM_EMAIL,
@@ -241,6 +244,8 @@ def enviar(assunto, html, texto):
     }
     if not to:
         payload["cc"] = CC_EMAILS
+    if agendar:
+        payload["scheduled_at"] = agendar.isoformat()
     r = requests.post(
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY_TFRUITS']}"},
@@ -249,11 +254,14 @@ def enviar(assunto, html, texto):
     )
     if r.status_code >= 300:
         sys.exit(f"Resend recusou o envio: {r.status_code} {r.text}")
-    print(f"Enviado para {payload['to']} (cc {payload.get('cc', [])}): {r.json().get('id')}")
+    quando = f"agendado para {agendar.isoformat()}" if agendar else "enviado agora"
+    print(f"{quando}: {payload['to']} (cc {payload.get('cc', [])}): {r.json().get('id')}")
 
 
 if __name__ == "__main__":
-    hoje = datetime.now(BRT)
+    envio_em = os.environ.get("ENVIO_EM", "").strip()
+    agendar = datetime.fromisoformat(envio_em) if envio_em else None
+    hoje = agendar.astimezone(BRT) if agendar else datetime.now(BRT)
     semanal, totais = carregar()
     assunto, html, texto = montar(semanal, totais, hoje)
     print(assunto)
@@ -263,4 +271,4 @@ if __name__ == "__main__":
             f.write(html)
         print("DRY_RUN: email_containers.html gerado, nada enviado.")
     else:
-        enviar(assunto, html, texto)
+        enviar(assunto, html, texto, agendar)
