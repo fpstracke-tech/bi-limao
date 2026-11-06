@@ -53,7 +53,12 @@ ALTURA_GRAFICO = 150  # px da coluna mais alta
 # Paleta TFruits clara
 INK, MUT, HAIR, FUNDO, CAIXA = "#141A14", "#6B746B", "#E8EAE6", "#F2F3EF", "#F6F7F4"
 G, GPREV, GRY, O = "#3E9B43", "#BFE0C1", "#D5D9D2", "#F15A22"
-FONT = "'Plus Jakarta Sans','Helvetica Neue',Helvetica,Arial,sans-serif"
+# Futura (pedido do Felipe, 06/11/2026). Futura é comercial e só existe
+# instalada no macOS/iOS; Jost (Google Fonts, livre, desenhada a partir da
+# Futura) cobre Apple Mail e clientes que carregam web font; Century Gothic
+# (vem com o Office) é o equivalente geométrico no Outlook do Windows.
+FONT = "Futura,'Futura PT',Jost,'Century Gothic','Helvetica Neue',Arial,sans-serif"
+FONT_MSO = "'Century Gothic',Arial,sans-serif"
 NUM = "font-variant-numeric:tabular-nums;"
 
 
@@ -189,13 +194,14 @@ def montar(semanal, totais, hoje):
     def var(p):
         return f'<span style="font-weight:700;color:{cor_var(p)};">{sinal(p)}</span>'
 
-    html = f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"><style>body,table,td,div,a{{font-family:{FONT};}}
+    html = f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700;800&display=swap" rel="stylesheet"><style>body,table,td,div,a{{font-family:{FONT};}}
 @media only screen and (max-width:480px){{
 .px{{padding-left:18px !important;padding-right:18px !important;}}
 .hn,.ht{{display:block !important;width:auto !important;padding:0 !important;}}
 .ht{{padding-top:10px !important;}}
 .hn{{font-size:60px !important;line-height:62px !important;}}
-}}</style></head>
+}}</style>
+<!--[if mso]><style>body,table,td,div,a,span,b{{font-family:{FONT_MSO} !important;}}</style><![endif]--></head>
 <body style="margin:0;padding:0;background:{FUNDO};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{FUNDO}" style="background:{FUNDO};"><tr><td align="center" style="padding:28px 14px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" bgcolor="#FFFFFF" style="max-width:600px;width:100%;background:#FFFFFF;border-radius:14px;color:{INK};font-family:{FONT};">
