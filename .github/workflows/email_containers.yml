@@ -1,0 +1,135 @@
+name: E-mail Containers — semanal
+
+# Envia o resumo semanal de chegadas de containers (Brasil para Europa e UK)
+# para o time comercial. Criado em 06/11/2026, substitui a página de imagem
+# "Containers Limão" do Power BI.
+#
+# Encadeado por DEPENDÊNCIA, igual ao relatório de preços: dispara quando o
+# "ETL Containers — diário" termina com sucesso, então nunca sai com dado velho
+# mesmo que o cron do GitHub atrase horas. Só segue em frente na SEGUNDA-FEIRA
+# (horário de Brasília), quando a semana anterior acabou de fechar.
+#
+# Idempotência: o ETL de containers pode rodar mais de uma vez no mesmo dia
+# (cron do GitHub + repository_dispatch do pg_cron, quando voltar). Um marcador
+# no cache do Actions por semana ISO garante um envio só por semana.
+#
+# Remetente reports@tfruits.com.br: o domínio está verificado em OUTRA conta
+# Resend, por isso a chave é RESEND_API_KEY_TFRUITS (não a RESEND_API_KEY do
+# relatório antigo, que é da conta tradeconnex.com).
+
+on:
+  workflow_run:
+    workflows: ["ETL Containers — diário"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      email_to:
+        description: "Enviar só para (teste, separar por vírgula). Vazio = destinatários oficiais"
+        required: false
+        default: ""
+      forcar:
+        description: "Enviar mesmo que já tenha saído nesta semana"
+        type: boolean
+        default: false
+
+jobs:
+  email:
+    name: Enviar e-mail de containers
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+      contents: read
+
+    env:
+      SUPABASE_URL:           ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY:           ${{ secrets.SUPABASE_KEY }}
+      RESEND_API_KEY_TFRUITS: ${{ secrets.RESEND_API_KEY_TFRUITS }}
+      EMAIL_TO:               ${{ github.event.inputs.email_to }}
+      PYTHONIOENCODING:       utf-8
+
+    steps:
+      - name: Segunda-feira? (BRT) e chave da semana
+        id: quando
+        run: |
+          DIA=$(TZ=America/Sao_Paulo date +%u)
+          # Na segunda, "7 dias atrás" cai na segunda da semana fechada.
+          SEMANA=$(TZ=America/Sao_Paulo date -d '7 days ago' +%G-W%V)
+          echo "dia=$DIA" >> "$GITHUB_OUTPUT"
+          echo "semana=$SEMANA" >> "$GITHUB_OUTPUT"
+          echo "Dia da semana BRT: $DIA | semana fechada: $SEMANA"
+
+      - name: Já enviado nesta semana?
+        id: marcador
+        if: github.event_name == 'workflow_run' && steps.quando.outputs.dia == '1'
+        uses: actions/cache/restore@v4
+        with:
+          path: .email_containers_enviado
+          key: email-containers-${{ steps.quando.outputs.semana }}
+          lookup-only: true
+
+      - name: Decidir se envia
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "enviar=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.quando.outputs.dia }}" != "1" ]; then
+            echo "Não é segunda-feira em Brasília, nada a fazer."
+            echo "enviar=false" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.marcador.outputs.cache-hit }}" = "true" ]; then
+            echo "E-mail da semana ${{ steps.quando.outputs.semana }} já foi enviado."
+            echo "enviar=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enviar=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.decide.outputs.enviar == 'true'
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        if: steps.decide.outputs.enviar == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependências
+        if: steps.decide.outputs.enviar == 'true'
+        run: pip install requests
+
+      - name: Gerar e enviar
+        if: steps.decide.outputs.enviar == 'true'
+        run: python email_containers.py
+
+      - name: Gravar marcador de envio
+        if: steps.decide.outputs.enviar == 'true' && github.event_name == 'workflow_run'
+        run: echo "${{ steps.quando.outputs.semana }}" > .email_containers_enviado
+
+      - name: Salvar marcador
+        if: steps.decide.outputs.enviar == 'true' && github.event_name == 'workflow_run'
+        uses: actions/cache/save@v4
+        with:
+          path: .email_containers_enviado
+          key: email-containers-${{ steps.quando.outputs.semana }}
+
+      - name: Abrir issue em caso de falha
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Falha no e-mail de containers ${new Date().toISOString().slice(0,10)}`,
+              body: [
+                `**Run:** https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '',
+                'Causas prováveis: semana fechada sem dado no banco (ETL ainda não pegou),',
+                'ou RESEND_API_KEY_TFRUITS inválida / domínio tfruits.com.br não verificado.',
+                'Reenvio manual: Actions > E-mail Containers — semanal > Run workflow.',
+              ].join('\n'),
+              labels: ['etl-falha', 'containers'],
+            });
