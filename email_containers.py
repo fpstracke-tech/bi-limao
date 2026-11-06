@@ -146,7 +146,7 @@ def montar(semanal, totais, hoje):
     sem_acum = sorted(w for (a, w) in semanal if a == ano and w <= W and (ano - 1, w) in semanal)
     acc_atual = sum(val(ano, w) for w in sem_acum)
     acc_ant = sum(val(ano - 1, w) for w in sem_acum)
-    acc_label = f"Acum. WK {sem_acum[0]} a {W}" if sem_acum else "Acumulado"
+    acc_label = f"Acumulado, semanas {sem_acum[0]} a {W}" if sem_acum else "Acumulado no ano"
 
     janela_vals = [val(a, w) or 0 for a, w in janela] + [val(a - 1, w) or 0 for a, w in janela]
     mx = max(janela_vals) or 1
@@ -189,24 +189,30 @@ def montar(semanal, totais, hoje):
     def var(p):
         return f'<span style="font-weight:700;color:{cor_var(p)};">{sinal(p)}</span>'
 
-    html = f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"><style>body,table,td,div,a{{font-family:{FONT};}}</style></head>
+    html = f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"><style>body,table,td,div,a{{font-family:{FONT};}}
+@media only screen and (max-width:480px){{
+.px{{padding-left:18px !important;padding-right:18px !important;}}
+.hn,.ht{{display:block !important;width:auto !important;padding:0 !important;}}
+.ht{{padding-top:10px !important;}}
+.hn{{font-size:60px !important;line-height:62px !important;}}
+}}</style></head>
 <body style="margin:0;padding:0;background:{FUNDO};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{FUNDO}" style="background:{FUNDO};"><tr><td align="center" style="padding:28px 14px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" bgcolor="#FFFFFF" style="max-width:600px;width:100%;background:#FFFFFF;border-radius:14px;color:{INK};font-family:{FONT};">
-<tr><td style="padding:26px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<tr><td class="px" style="padding:26px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
 <td><img src="cid:logo-tfruits" width="96" height="33" alt="TFruits" style="display:block;border:0;"></td>
 <td align="right" style="font-size:12px;color:{MUT};">Semana {W} &middot; {ano}</td></tr></table></td></tr>
-<tr><td style="padding:30px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td valign="bottom" width="160" style="font-size:68px;font-weight:800;letter-spacing:-0.04em;line-height:72px;mso-line-height-rule:exactly;color:{INK};{NUM}">{fmt(w_atual)}</td>
-<td valign="bottom" style="padding-left:6px;padding-bottom:6px;font-size:15px;line-height:1.45;color:{INK};">containers de limão do Brasil chegaram na Europa e UK na semana {W}.<br>{var(p_sem)} <span style="color:{MUT};">vs {ano - 1} ({fmt(w_ant)})</span></td></tr></table></td></tr>
-<tr><td style="padding:26px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid {HAIR};border-bottom:1px solid {HAIR};"><tr>
-<td width="50%" style="padding:14px 0;font-size:13px;color:{MUT};">Últimas 4 semanas<br><span style="font-size:20px;font-weight:700;color:{INK};{NUM}">{fmt(l4_atual)}</span> {var(p_l4)}</td>
-<td width="50%" style="padding:14px 0 14px 18px;border-left:1px solid {HAIR};font-size:13px;color:{MUT};">{acc_label}<br><span style="font-size:20px;font-weight:700;color:{INK};{NUM}">{fmt(acc_atual)}</span> {var(p_acc)}</td></tr></table></td></tr>
-<tr><td style="padding:24px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td style="font-size:14px;font-weight:700;color:{INK};">Últimas {len(janela)} semanas</td>
+<tr><td class="px" style="padding:30px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td class="hn" valign="bottom" width="170" style="padding-right:14px;font-size:68px;font-weight:800;letter-spacing:-0.04em;line-height:72px;mso-line-height-rule:exactly;color:{INK};{NUM}">{fmt(w_atual)}</td>
+<td class="ht" valign="bottom" style="padding-bottom:6px;font-size:15px;line-height:1.45;color:{INK};">Containers de limão do Brasil que chegaram à Europa e ao Reino Unido na semana {W}.<br>{var(p_sem)} <span style="color:{MUT};">vs mesma semana de {ano - 1} ({fmt(w_ant)})</span></td></tr></table></td></tr>
+<tr><td class="px" style="padding:26px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid {HAIR};border-bottom:1px solid {HAIR};"><tr>
+<td width="50%" style="padding:14px 0;font-size:13px;color:{MUT};">Últimas 4 semanas ({ult4[-1][1]} a {W})<br><span style="font-size:20px;font-weight:700;color:{INK};{NUM}">{fmt(l4_atual)}</span> {var(p_l4)}<br><span style="font-size:12px;color:{MUT};{NUM}">{ano - 1}: {fmt(l4_ant)}</span></td>
+<td width="50%" style="padding:14px 0 14px 18px;border-left:1px solid {HAIR};font-size:13px;color:{MUT};">{acc_label}<br><span style="font-size:20px;font-weight:700;color:{INK};{NUM}">{fmt(acc_atual)}</span> {var(p_acc)}<br><span style="font-size:12px;color:{MUT};{NUM}">{ano - 1}: {fmt(acc_ant)}</span></td></tr></table></td></tr>
+<tr><td class="px" style="padding:24px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td style="font-size:14px;font-weight:700;color:{INK};">Chegadas por semana</td>
 <td align="right"><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right"><tr>{leg(G, 9, ano)}{leg(GRY, 4, ano - 1)}{leg(GPREV, 9, "previsto")}</tr></table></td></tr></table></td></tr>
-<tr><td style="padding:18px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="table-layout:fixed;"><tr>{colunas}</tr><tr>{rotulos}</tr></table></td></tr>
-<tr><td style="padding:22px 30px 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{CAIXA}" style="background:{CAIXA};border-radius:10px;"><tr>
+<tr><td class="px" style="padding:18px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="table-layout:fixed;"><tr>{colunas}</tr><tr>{rotulos}</tr></table></td></tr>
+<tr><td class="px" style="padding:22px 30px 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{CAIXA}" style="background:{CAIXA};border-radius:10px;"><tr>
 <td style="padding:14px 16px;font-size:12px;color:{MUT};">Total do ano</td>
 <td align="right" style="padding:14px 8px;font-size:12px;color:{MUT};">{ano} <b style="font-size:15px;color:{INK};{NUM}">{t(ano)}</b></td>
 <td align="right" style="padding:14px 8px;font-size:12px;color:{MUT};">{ano - 1} <b style="font-size:15px;color:{INK};{NUM}">{t(ano - 1)}</b></td>
@@ -219,9 +225,9 @@ def montar(semanal, totais, hoje):
         return "" if p is None else f" ({'+' if p >= 0 else '-'}{abs(p)}% vs {ano - 1})"
 
     texto = (
-        f"Containers Brasil para Europa e UK | Semana {W}/{ano}\n\n"
+        f"Containers de limão do Brasil na Europa e Reino Unido | Semana {W}/{ano}\n\n"
         f"Semana {W}: {fmt(w_atual)}{txt_var(p_sem)}\n"
-        f"WK {ult4[-1][1]} a {W}: {fmt(l4_atual)}{txt_var(pct(l4_atual, l4_ant))}\n"
+        f"Últimas 4 semanas ({ult4[-1][1]} a {W}): {fmt(l4_atual)}{txt_var(pct(l4_atual, l4_ant))}\n"
         f"{acc_label}: {fmt(acc_atual)}{txt_var(pct(acc_atual, acc_ant))}\n"
         f"Total do ano {ano}: {t(ano)} | {ano - 1}: {t(ano - 1)} | {ano - 2}: {t(ano - 2)}\n\n"
         f"Gerado pelo time de BI da TFruits | {SITE_URL}\n"
