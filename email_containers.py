@@ -36,6 +36,9 @@ CC_EMAILS = ["felipe.passos@tradeconnex.com"]
 
 DASHBOARD_URL = "https://bilimao.tfruits.com.br"
 LOGO_URL = f"{DASHBOARD_URL}/logo_tfruits.png"
+# Logo vai ANEXADO inline (cid). Imagem por URL externa o Outlook bloqueia até o
+# usuário clicar em "baixar imagens" (visto no teste de 06/11/2026).
+LOGO_ARQUIVO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo_tfruits.png")
 SITE_URL = "https://www.tfruits.com.br"
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -156,12 +159,20 @@ def montar(semanal, totais, hoje):
         h = max(2, round((v or 0) / mx * ALTURA_GRAFICO))
         h_ant = max(2, round((v_ant or 0) / mx * ALTURA_GRAFICO))
         cor = O if destaque else (GPREV if futuro else G)
+        def barra(altura, largura, cor):
+            # Outlook (motor do Word) ignora height de <div>; respeita height+bgcolor em <td>.
+            return (f'<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+                    f'<td width="{largura}" height="{altura}" bgcolor="{cor}" style="width:{largura}px;height:{altura}px;'
+                    f'background:{cor};font-size:1px;line-height:1px;mso-line-height-rule:exactly;">&nbsp;</td></tr></table>')
+        rotulo = fmt(v) if v is not None else "&nbsp;"
         colunas += (
             f'<td valign="bottom" align="center" style="padding:0 1px;">'
-            f'<div style="font-size:10px;font-weight:700;color:{MUT if futuro else INK};padding-bottom:3px;{NUM}">{fmt(v) if v is not None else ""}</div>'
-            f'<table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr>'
-            f'<td valign="bottom" style="padding-right:2px;"><div style="width:11px;height:{h}px;background:{cor};border-radius:3px 3px 0 0;font-size:1px;line-height:1px;">&nbsp;</div></td>'
-            f'<td valign="bottom"><div style="width:4px;height:{h_ant}px;background:{GRY};border-radius:2px 2px 0 0;font-size:1px;line-height:1px;">&nbsp;</div></td>'
+            f'<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr>'
+            f'<td valign="bottom" align="center">'
+            f'<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="font-size:10px;line-height:12px;mso-line-height-rule:exactly;font-weight:700;color:{MUT if futuro else INK};padding-bottom:3px;white-space:nowrap;{NUM}">{rotulo}</td></tr>'
+            f'<tr><td align="center" valign="bottom">{barra(h, 11, cor)}</td></tr></table></td>'
+            f'<td width="2" style="width:2px;font-size:1px;line-height:1px;">&nbsp;</td>'
+            f'<td valign="bottom">{barra(h_ant, 4, GRY)}</td>'
             f'</tr></table></td>'
         )
         rotulos += (f'<td align="center" style="padding-top:8px;font-size:10px;border-top:1px solid {INK};'
@@ -169,6 +180,11 @@ def montar(semanal, totais, hoje):
 
     p_sem, p_l4, p_acc = pct(w_atual, w_ant), pct(l4_atual, l4_ant), pct(acc_atual, acc_ant)
     t = lambda y: fmt(totais.get(y))
+
+    def leg(cor, largura, texto):
+        return (f'<td valign="middle" style="padding-left:10px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+                f'<td width="{largura}" height="9" bgcolor="{cor}" style="width:{largura}px;height:9px;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td>'
+                f'<td valign="middle" style="padding-left:4px;font-size:11px;color:{MUT};white-space:nowrap;">{texto}</td>')
 
     def var(p):
         return f'<span style="font-weight:700;color:{cor_var(p)};">{sinal(p)}</span>'
@@ -178,17 +194,17 @@ def montar(semanal, totais, hoje):
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{FUNDO}" style="background:{FUNDO};"><tr><td align="center" style="padding:28px 14px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" bgcolor="#FFFFFF" style="max-width:600px;width:100%;background:#FFFFFF;border-radius:14px;color:{INK};font-family:{FONT};">
 <tr><td style="padding:26px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td><img src="{LOGO_URL}" width="96" alt="TFruits" style="display:block;border:0;"></td>
+<td><img src="cid:logo-tfruits" width="96" height="33" alt="TFruits" style="display:block;border:0;"></td>
 <td align="right" style="font-size:12px;color:{MUT};">Semana {W} &middot; {ano}</td></tr></table></td></tr>
 <tr><td style="padding:30px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td valign="bottom" width="160" style="font-size:68px;font-weight:800;letter-spacing:-0.05em;line-height:.9;color:{INK};{NUM}">{fmt(w_atual)}</td>
+<td valign="bottom" width="160" style="font-size:68px;font-weight:800;letter-spacing:-0.04em;line-height:72px;mso-line-height-rule:exactly;color:{INK};{NUM}">{fmt(w_atual)}</td>
 <td valign="bottom" style="padding-left:6px;padding-bottom:6px;font-size:15px;line-height:1.45;color:{INK};">containers de limão do Brasil chegaram na Europa e UK na semana {W}.<br>{var(p_sem)} <span style="color:{MUT};">vs {ano - 1} ({fmt(w_ant)})</span></td></tr></table></td></tr>
 <tr><td style="padding:26px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid {HAIR};border-bottom:1px solid {HAIR};"><tr>
 <td width="50%" style="padding:14px 0;font-size:13px;color:{MUT};">Últimas 4 semanas<br><span style="font-size:20px;font-weight:700;color:{INK};{NUM}">{fmt(l4_atual)}</span> {var(p_l4)}</td>
 <td width="50%" style="padding:14px 0 14px 18px;border-left:1px solid {HAIR};font-size:13px;color:{MUT};">{acc_label}<br><span style="font-size:20px;font-weight:700;color:{INK};{NUM}">{fmt(acc_atual)}</span> {var(p_acc)}</td></tr></table></td></tr>
 <tr><td style="padding:24px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
 <td style="font-size:14px;font-weight:700;color:{INK};">Últimas {len(janela)} semanas</td>
-<td align="right" style="font-size:11px;color:{MUT};"><span style="display:inline-block;width:9px;height:9px;background:{G};border-radius:2px;"></span> {ano}&nbsp;&nbsp;<span style="display:inline-block;width:5px;height:9px;background:{GRY};border-radius:1px;"></span> {ano - 1}&nbsp;&nbsp;<span style="display:inline-block;width:9px;height:9px;background:{GPREV};border-radius:2px;"></span> previsto</td></tr></table></td></tr>
+<td align="right"><table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right"><tr>{leg(G, 9, ano)}{leg(GRY, 4, ano - 1)}{leg(GPREV, 9, "previsto")}</tr></table></td></tr></table></td></tr>
 <tr><td style="padding:18px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="table-layout:fixed;"><tr>{colunas}</tr><tr>{rotulos}</tr></table></td></tr>
 <tr><td style="padding:22px 30px 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{CAIXA}" style="background:{CAIXA};border-radius:10px;"><tr>
 <td style="padding:14px 16px;font-size:12px;color:{MUT};">Total do ano</td>
@@ -226,6 +242,14 @@ def enviar(assunto, html, texto, agendar=None):
     }
     if not to:
         payload["cc"] = CC_EMAILS
+    import base64
+    with open(LOGO_ARQUIVO, "rb") as f:
+        payload["attachments"] = [{
+            "filename": "logo_tfruits.png",
+            "content": base64.b64encode(f.read()).decode(),
+            "content_type": "image/png",
+            "content_id": "logo-tfruits",
+        }]
     if agendar:
         payload["scheduled_at"] = agendar.isoformat()
     r = requests.post(
@@ -250,7 +274,7 @@ if __name__ == "__main__":
     print(texto)
     if DRY_RUN:
         with open("email_containers.html", "w", encoding="utf-8") as f:
-            f.write(html)
+            f.write(html.replace("cid:logo-tfruits", LOGO_URL))
         print("DRY_RUN: email_containers.html gerado, nada enviado.")
     else:
         enviar(assunto, html, texto, agendar)
