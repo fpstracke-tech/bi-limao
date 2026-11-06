@@ -218,7 +218,7 @@ def montar(semanal, totais, hoje):
 <td align="right" style="padding:14px 8px;font-size:12px;color:{MUT};">{ano - 1} <b style="font-size:15px;color:{INK};{NUM}">{t(ano - 1)}</b></td>
 <td align="right" style="padding:14px 16px 14px 8px;font-size:12px;color:{MUT};">{ano - 2} <b style="font-size:15px;color:{INK};{NUM}">{t(ano - 2)}</b></td></tr></table></td></tr>
 </table></td></tr>
-<tr><td align="center" style="padding:18px 30px 0;font-size:12px;line-height:1.6;color:{MUT};font-family:{FONT};">Gerado pelo time de BI da TFruits<br><a href="{SITE_URL}" style="color:{G};font-weight:600;text-decoration:none;">tfruits.com.br</a></td></tr>
+<tr><td align="center" style="padding:18px 30px 0;font-size:12px;line-height:1.6;color:{MUT};font-family:{FONT};">Semanas em curso e previstas ainda podem ser revisadas pela fonte.<br>Gerado pelo time de BI da TFruits<br><a href="{SITE_URL}" style="color:{G};font-weight:600;text-decoration:none;">tfruits.com.br</a></td></tr>
 </table></td></tr></table></body></html>'''
 
     def txt_var(p):
@@ -230,6 +230,7 @@ def montar(semanal, totais, hoje):
         f"Últimas 4 semanas ({ult4[-1][1]} a {W}): {fmt(l4_atual)}{txt_var(pct(l4_atual, l4_ant))}\n"
         f"{acc_label}: {fmt(acc_atual)}{txt_var(pct(acc_atual, acc_ant))}\n"
         f"Total do ano {ano}: {t(ano)} | {ano - 1}: {t(ano - 1)} | {ano - 2}: {t(ano - 2)}\n\n"
+        f"Semanas em curso e previstas ainda podem ser revisadas pela fonte.\n"
         f"Gerado pelo time de BI da TFruits | {SITE_URL}\n"
     ).replace("&ndash;", "-")
 
