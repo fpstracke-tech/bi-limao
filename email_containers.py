@@ -5,8 +5,11 @@ Chegadas de containers de limão do Brasil na Europa e UK, semana fechada vs
 mesma semana do ano anterior. Substitui a página "Containers Limão" do Power BI
 (que era só um print estático da fonte).
 
-Layout v3 escuro (aprovado por Felipe em 06/11/2026), mesmo padrão de cores do
-bilimao. HTML em tabela com estilos inline (Outlook não entende flex).
+Layout v4 (aprovado por Felipe em 06/11/2026, depois de rejeitar a v3 escura):
+número da semana em destaque, linha com últimas 4 semanas e acumulado, gráfico
+de colunas 2026 x 2025 das últimas 15 semanas e totais do ano. Sem link para o
+BI (pedido do Felipe). HTML em tabela com estilos inline (Outlook não entende
+flex); colunas são divs com altura fixa dentro de células alinhadas na base.
 
 Variáveis de ambiente:
   SUPABASE_URL, SUPABASE_KEY      leitura das views
@@ -33,18 +36,20 @@ CC_EMAILS = ["felipe.passos@tradeconnex.com"]
 
 DASHBOARD_URL = "https://bilimao.tfruits.com.br"
 LOGO_URL = f"{DASHBOARD_URL}/logo_tfruits.png"
+SITE_URL = "https://www.tfruits.com.br"
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 
 BRT = timezone(timedelta(hours=-3))
-SEMANAS_ANTES = 7     # semanas fechadas exibidas antes da última fechada
-SEMANAS_DEPOIS = 3    # em curso + previstas
+SEMANAS_ANTES = 11    # semanas fechadas no gráfico antes da última fechada
+SEMANAS_DEPOIS = 3    # em curso + previstas (total 15 colunas)
+ALTURA_GRAFICO = 150  # px da coluna mais alta
 
-# Paleta do bilimao (index.html)
-BG, SF, TX, MU, HL = "#090C09", "#121712", "#F0F4F0", "#8A9A8A", "#1F261F"
-G, GL, O, G25 = "#4CAE4F", "#24402A", "#F15A22", "#3A443A"
+# Paleta TFruits clara
+INK, MUT, HAIR, FUNDO, CAIXA = "#141A14", "#6B746B", "#E8EAE6", "#F2F3EF", "#F6F7F4"
+G, GPREV, GRY, O = "#3E9B43", "#BFE0C1", "#D5D9D2", "#F15A22"
 FONT = "'Plus Jakarta Sans','Helvetica Neue',Helvetica,Arial,sans-serif"
 NUM = "font-variant-numeric:tabular-nums;"
 
@@ -140,82 +145,58 @@ def montar(semanal, totais, hoje):
     acc_ant = sum(val(ano - 1, w) for w in sem_acum)
     acc_label = f"Acum. WK {sem_acum[0]} a {W}" if sem_acum else "Acumulado"
 
-    mx = max([val(a, w) or 0 for a, w in janela] + [val(a - 1, w) or 0 for a, w in janela]) or 1
+    janela_vals = [val(a, w) or 0 for a, w in janela] + [val(a - 1, w) or 0 for a, w in janela]
+    mx = max(janela_vals) or 1
 
-    def barra(v, cor, h):
-        pc = max(1, round((v or 0) / mx * 100))
-        return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
-                f'<td width="{pc}%" bgcolor="{cor}" style="height:{h}px;line-height:{h}px;font-size:1px;border-radius:3px;">&nbsp;</td>'
-                f'<td style="font-size:1px;line-height:{h}px;">&nbsp;</td></tr></table>')
-
-    linhas = ""
+    colunas, rotulos = "", ""
     for a, w in janela:
         futuro = (a, w) > fechada
         destaque = (a, w) == fechada
-        if (a, w) == em_curso:
-            nota = f'<span style="font-size:11px;color:{O};"> em curso</span>'
-        elif futuro:
-            nota = f'<span style="font-size:11px;color:{MU};"> prev.</span>'
-        else:
-            nota = ""
-        cor = O if destaque else (GL if futuro else G)
-        txt = MU if futuro else TX
-        peso = 700 if destaque else 500
-        borda = f"border-top:1px solid {HL};"
-        linhas += (
-            f'<tr><td width="92" style="padding:8px 0;{borda}font-size:13px;color:{txt};font-weight:{peso};">WK {w}{nota}</td>'
-            f'<td style="padding:8px 14px 8px 0;{borda}">{barra(val(a, w), cor, 8)}'
-            f'<div style="height:4px;line-height:4px;font-size:1px;">&nbsp;</div>{barra(val(a - 1, w), G25, 3)}</td>'
-            f'<td width="52" align="right" style="padding:8px 0;{borda}font-size:14px;font-weight:{700 if destaque else 600};color:{txt};{NUM}">{fmt(val(a, w))}</td>'
-            f'<td width="52" align="right" style="padding:8px 0;{borda}font-size:13px;color:{MU};{NUM}">{fmt(val(a - 1, w))}</td>'
-            f'<td width="52" align="right" style="padding:8px 0;{borda}font-size:13px;color:{MU};{NUM}">{fmt(val(a - 2, w))}</td></tr>'
+        v, v_ant = val(a, w), val(a - 1, w)
+        h = max(2, round((v or 0) / mx * ALTURA_GRAFICO))
+        h_ant = max(2, round((v_ant or 0) / mx * ALTURA_GRAFICO))
+        cor = O if destaque else (GPREV if futuro else G)
+        colunas += (
+            f'<td valign="bottom" align="center" style="padding:0 1px;">'
+            f'<div style="font-size:10px;font-weight:700;color:{MUT if futuro else INK};padding-bottom:3px;{NUM}">{fmt(v) if v is not None else ""}</div>'
+            f'<table role="presentation" cellpadding="0" cellspacing="0" align="center"><tr>'
+            f'<td valign="bottom" style="padding-right:2px;"><div style="width:11px;height:{h}px;background:{cor};border-radius:3px 3px 0 0;font-size:1px;line-height:1px;">&nbsp;</div></td>'
+            f'<td valign="bottom"><div style="width:4px;height:{h_ant}px;background:{GRY};border-radius:2px 2px 0 0;font-size:1px;line-height:1px;">&nbsp;</div></td>'
+            f'</tr></table></td>'
         )
+        rotulos += (f'<td align="center" style="padding-top:8px;font-size:10px;border-top:1px solid {INK};'
+                    f'color:{O if destaque else MUT};font-weight:{700 if destaque else 500};">{w}</td>')
 
-    def kpi(rot, v, comp, p):
-        return (
-            f'<td width="33%" valign="top" style="padding:0 5px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
-            f'<td bgcolor="{SF}" style="padding:16px;border-radius:10px;">'
-            f'<div style="font-size:12px;color:{MU};">{rot}</div>'
-            f'<div style="font-size:26px;font-weight:700;color:{TX};letter-spacing:-0.02em;padding-top:6px;{NUM}">{fmt(v)}</div>'
-            f'<div style="font-size:12px;color:{MU};padding-top:2px;{NUM}"><span style="color:{cor_var(p)};font-weight:700;">{sinal(p)}</span> vs {fmt(comp)}</div>'
-            f'</td></tr></table></td>'
-        )
-
-    p_sem = pct(w_atual, w_ant)
-    if p_sem is None:
-        manchete = f"Semana {W} fechou com {fmt(w_atual)} containers."
-    else:
-        rel = "acima" if p_sem >= 0 else "abaixo"
-        manchete = (f'Semana {W} fechou com {fmt(w_atual)} containers, '
-                    f'<span style="color:{cor_var(p_sem)};">{abs(p_sem)}% {rel}</span> de {ano - 1}.')
-
+    p_sem, p_l4, p_acc = pct(w_atual, w_ant), pct(l4_atual, l4_ant), pct(acc_atual, acc_ant)
     t = lambda y: fmt(totais.get(y))
-    rodape_borda = f"border-top:1px solid {MU};"
 
-    html = f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"><style>body,table,td,div,a{{font-family:{FONT};}}</style></head>
-<body style="margin:0;padding:0;background:{BG};">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{BG}" style="background:{BG};"><tr><td align="center" style="padding:28px 14px;">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;color:{TX};font-family:{FONT};">
-<tr><td style="padding:0 5px 26px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td><img src="{LOGO_URL}" width="100" alt="TFruits" style="display:block;border:0;"></td>
-<td align="right" style="font-size:12px;color:{MU};">BI Limão &middot; Semana {W}</td></tr></table></td></tr>
-<tr><td style="padding:0 5px 4px;font-size:12px;font-weight:600;color:{G};">Containers Brasil para Europa e UK</td></tr>
-<tr><td style="padding:0 5px 24px;font-size:24px;line-height:1.3;font-weight:700;letter-spacing:-0.02em;color:{TX};">{manchete}</td></tr>
-<tr><td style="padding-bottom:10px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-{kpi(f"Semana {W}", w_atual, w_ant, p_sem)}{kpi(f"WK {ult4[-1][1]} a {W}", l4_atual, l4_ant, pct(l4_atual, l4_ant))}{kpi(acc_label, acc_atual, acc_ant, pct(acc_atual, acc_ant))}
-</tr></table></td></tr>
-<tr><td style="padding:0 5px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td bgcolor="{SF}" style="padding:20px 20px 16px;border-radius:10px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-<tr><td colspan="2" style="padding-bottom:14px;font-size:14px;font-weight:600;color:{TX};">Chegadas por semana</td>
-<td width="52" align="right" style="padding-bottom:14px;font-size:11px;color:{G};font-weight:700;">{ano}</td>
-<td width="52" align="right" style="padding-bottom:14px;font-size:11px;color:{MU};">{ano - 1}</td>
-<td width="52" align="right" style="padding-bottom:14px;font-size:11px;color:{MU};">{ano - 2}</td></tr>
-{linhas}
-<tr><td colspan="2" style="padding:12px 0 0;{rodape_borda}font-size:13px;font-weight:600;color:{TX};">Total do ano</td>
-<td align="right" style="padding:12px 0 0;{rodape_borda}font-size:14px;font-weight:700;color:{TX};{NUM}">{t(ano)}</td>
-<td align="right" style="padding:12px 0 0;{rodape_borda}font-size:13px;color:{MU};{NUM}">{t(ano - 1)}</td>
-<td align="right" style="padding:12px 0 0;{rodape_borda}font-size:13px;color:{MU};{NUM}">{t(ano - 2)}</td></tr>
-</table></td></tr></table></td></tr>
+    def var(p):
+        return f'<span style="font-weight:700;color:{cor_var(p)};">{sinal(p)}</span>'
+
+    html = f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"><style>body,table,td,div,a{{font-family:{FONT};}}</style></head>
+<body style="margin:0;padding:0;background:{FUNDO};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{FUNDO}" style="background:{FUNDO};"><tr><td align="center" style="padding:28px 14px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" bgcolor="#FFFFFF" style="max-width:600px;width:100%;background:#FFFFFF;border-radius:14px;color:{INK};font-family:{FONT};">
+<tr><td style="padding:26px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td><img src="{LOGO_URL}" width="96" alt="TFruits" style="display:block;border:0;"></td>
+<td align="right" style="font-size:12px;color:{MUT};">Semana {W} &middot; {ano}</td></tr></table></td></tr>
+<tr><td style="padding:30px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td valign="bottom" width="160" style="font-size:68px;font-weight:800;letter-spacing:-0.05em;line-height:.9;color:{INK};{NUM}">{fmt(w_atual)}</td>
+<td valign="bottom" style="padding-left:6px;padding-bottom:6px;font-size:15px;line-height:1.45;color:{INK};">containers de limão do Brasil chegaram na Europa e UK na semana {W}.<br>{var(p_sem)} <span style="color:{MUT};">vs {ano - 1} ({fmt(w_ant)})</span></td></tr></table></td></tr>
+<tr><td style="padding:26px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid {HAIR};border-bottom:1px solid {HAIR};"><tr>
+<td width="50%" style="padding:14px 0;font-size:13px;color:{MUT};">Últimas 4 semanas<br><span style="font-size:20px;font-weight:700;color:{INK};{NUM}">{fmt(l4_atual)}</span> {var(p_l4)}</td>
+<td width="50%" style="padding:14px 0 14px 18px;border-left:1px solid {HAIR};font-size:13px;color:{MUT};">{acc_label}<br><span style="font-size:20px;font-weight:700;color:{INK};{NUM}">{fmt(acc_atual)}</span> {var(p_acc)}</td></tr></table></td></tr>
+<tr><td style="padding:24px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td style="font-size:14px;font-weight:700;color:{INK};">Últimas {len(janela)} semanas</td>
+<td align="right" style="font-size:11px;color:{MUT};"><span style="display:inline-block;width:9px;height:9px;background:{G};border-radius:2px;"></span> {ano}&nbsp;&nbsp;<span style="display:inline-block;width:5px;height:9px;background:{GRY};border-radius:1px;"></span> {ano - 1}&nbsp;&nbsp;<span style="display:inline-block;width:9px;height:9px;background:{GPREV};border-radius:2px;"></span> previsto</td></tr></table></td></tr>
+<tr><td style="padding:18px 30px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="table-layout:fixed;"><tr>{colunas}</tr><tr>{rotulos}</tr></table></td></tr>
+<tr><td style="padding:22px 30px 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{CAIXA}" style="background:{CAIXA};border-radius:10px;"><tr>
+<td style="padding:14px 16px;font-size:12px;color:{MUT};">Total do ano</td>
+<td align="right" style="padding:14px 8px;font-size:12px;color:{MUT};">{ano} <b style="font-size:15px;color:{INK};{NUM}">{t(ano)}</b></td>
+<td align="right" style="padding:14px 8px;font-size:12px;color:{MUT};">{ano - 1} <b style="font-size:15px;color:{INK};{NUM}">{t(ano - 1)}</b></td>
+<td align="right" style="padding:14px 16px 14px 8px;font-size:12px;color:{MUT};">{ano - 2} <b style="font-size:15px;color:{INK};{NUM}">{t(ano - 2)}</b></td></tr></table></td></tr>
+</table></td></tr>
+<tr><td align="center" style="padding:18px 30px 0;font-size:12px;line-height:1.6;color:{MUT};font-family:{FONT};">Gerado pelo time de BI da TFruits<br><a href="{SITE_URL}" style="color:{G};font-weight:600;text-decoration:none;">tfruits.com.br</a></td></tr>
 </table></td></tr></table></body></html>'''
 
     def txt_var(p):
@@ -226,7 +207,8 @@ def montar(semanal, totais, hoje):
         f"Semana {W}: {fmt(w_atual)}{txt_var(p_sem)}\n"
         f"WK {ult4[-1][1]} a {W}: {fmt(l4_atual)}{txt_var(pct(l4_atual, l4_ant))}\n"
         f"{acc_label}: {fmt(acc_atual)}{txt_var(pct(acc_atual, acc_ant))}\n"
-        f"Total do ano {ano}: {t(ano)} | {ano - 1}: {t(ano - 1)} | {ano - 2}: {t(ano - 2)}\n"
+        f"Total do ano {ano}: {t(ano)} | {ano - 1}: {t(ano - 1)} | {ano - 2}: {t(ano - 2)}\n\n"
+        f"Gerado pelo time de BI da TFruits | {SITE_URL}\n"
     ).replace("&ndash;", "-")
 
     assunto = f"Containers Limão | Semana {W}/{ano}"
