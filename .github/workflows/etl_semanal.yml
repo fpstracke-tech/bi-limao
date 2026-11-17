@@ -46,7 +46,7 @@ on:
 
 jobs:
   etl-precos:
-    name: Preços Brasil + Chile + México + Colômbia + Peru + Europa
+    name: Preços Brasil (HF + CEAGESP) + Chile + México + Colômbia + Peru + Europa
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -75,6 +75,13 @@ jobs:
       - name: ETL Preços Brasil (HF Brasil)
         id: brasil
         run: python etl_hfbrasil.py
+
+      # Série ALTERNATIVA (17/11/2026): atacado CEAGESP, enquanto o HF Brasil
+      # estiver bloqueado/sem licença. Tabela própria (ceagesp_precos).
+      - name: ETL Preços Brasil — alternativa (CEAGESP)
+        id: ceagesp
+        if: ${{ !cancelled() }}
+        run: python etl_ceagesp.py
 
       # !cancelled(): uma fonte falhar não pode pular as outras
       # (03/08/2026: 403 do HF Brasil derrubou Chile e Europa juntos)
@@ -115,6 +122,7 @@ jobs:
         if: always()
         run: |
           echo "Brasil:   ${{ steps.brasil.outcome }}"
+          echo "CEAGESP:  ${{ steps.ceagesp.outcome }}"
           echo "Chile:    ${{ steps.chile.outcome }}"
           echo "México:   ${{ steps.mexico.outcome }}"
           echo "Colômbia: ${{ steps.colombia.outcome }}"
@@ -128,6 +136,7 @@ jobs:
           script: |
             const steps = {
               Brasil:  '${{ steps.brasil.outcome }}',
+              CEAGESP: '${{ steps.ceagesp.outcome }}',
               Chile:   '${{ steps.chile.outcome }}',
               Mexico:   '${{ steps.mexico.outcome }}',
               Colombia: '${{ steps.colombia.outcome }}',

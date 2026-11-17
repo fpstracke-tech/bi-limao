@@ -346,6 +346,28 @@
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
 
+  /* ── Série alternativa (CEAGESP) e aviso de fonte pausada ── */
+  .source-alert {
+    display: flex; gap: .75rem; align-items: flex-start;
+    margin: -1rem 0 1.5rem; padding: .85rem 1rem; max-width: 92ch;
+    border: 1px solid var(--orange-border); border-radius: 14px;
+    background: var(--orange-dim); color: var(--text-2);
+    font-size: .76rem; line-height: 1.5;
+  }
+  .source-alert strong { color: var(--text); font-weight: 600; }
+  .source-alert a { color: var(--orange); font-weight: 600; text-decoration: none; white-space: nowrap; }
+  .source-alert a:hover { text-decoration: underline; }
+  .source-alert-icon { color: var(--orange); font-size: 1rem; line-height: 1.2; }
+  .alt-series { margin-top: 2.75rem; padding-top: 2rem; border-top: 1px dashed var(--orange-border); scroll-margin-top: 1rem; }
+  .alt-series .page-header { margin-bottom: 1.25rem; }
+  .page-eyebrow.eyebrow-alt { color: var(--orange); background: var(--orange-dim); border-color: var(--orange-border); }
+  .alt-title { font-size: 1.25rem; font-weight: 700; color: var(--text); line-height: 1.25; }
+  .alt-tag {
+    display: inline-block; margin-left: .5rem; padding: .1rem .5rem; vertical-align: middle;
+    font-size: .58rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text-3); border: 1px solid var(--border); border-radius: 99px;
+  }
+
   /* ── UPDATE TAG ──────────────────────────────────────────────── */
   #last-update { font-size: .65rem; color: var(--text-3); }
 </style>
@@ -430,6 +452,7 @@
         <div class="page-title">Preços Brasil</div>
         <div class="page-sub">Lima Ácida Tahiti — Colhida — R$/cx 4,5kg</div>
       </div>
+      <div class="source-alert" id="brasil-aviso-fonte" hidden></div>
       <div class="kpi-grid" id="brasil-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
       <!-- Histórico comparativo por ano -->
       <div class="card-shell chart-card">
@@ -456,6 +479,37 @@
               <div class="filter-bar" id="brasil-filter"></div>
             </div>
             <div class="chart-wrap"><canvas id="chartBrasil"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Série alternativa: atacado CEAGESP (17/11/2026). Não é continuação do HF Brasil. -->
+      <div class="alt-series" id="ceagesp-bloco">
+        <div class="page-header">
+          <div class="page-eyebrow eyebrow-alt">🏪 Série alternativa · CEAGESP</div>
+          <div class="alt-title">Atacado CEAGESP — Entreposto de São Paulo <span class="alt-tag">referência</span></div>
+          <div class="page-sub">Limão Taiti — preço comum dos pregões (seg/qua/sex) — R$/cx 4,5kg, convertido de R$/kg</div>
+          <div class="page-note">
+            <strong>Não é a mesma série do HF Brasil/Cepea.</strong> O HF Brasil mede o preço pago ao <strong>produtor</strong> nas praças paulistas;
+            a CEAGESP mede o preço de <strong>atacado</strong> no entreposto de São Paulo, que já embute frete e margem do atacadista.
+            Use a CEAGESP para acompanhar <em>direção e ritmo</em> do mercado, não para comparar valores com os gráficos acima.
+            Fonte: cotações públicas da CEAGESP.
+          </div>
+        </div>
+        <div class="kpi-grid" id="ceagesp-kpis"><div class="loading"><div class="spinner"></div>Carregando…</div></div>
+        <div class="card-shell chart-card">
+          <div class="card-inner">
+            <div class="chart-header">
+              <span class="chart-title">CEAGESP — Histórico por Ano — Média semanal R$/cx 4,5kg</span>
+              <select class="styled-select" id="ceagesp-classe-select"></select>
+            </div>
+            <div class="chart-wrap"><canvas id="chartCeagespHistorico"></canvas></div>
+          </div>
+        </div>
+        <div class="card-shell chart-card" style="margin-top:1rem">
+          <div class="card-inner">
+            <div class="chart-header"><span class="chart-title">CEAGESP — Últimos 90 dias por classificação (R$/cx 4,5kg)</span></div>
+            <div class="chart-wrap"><canvas id="chartCeagespRecente"></canvas></div>
           </div>
         </div>
       </div>
@@ -1277,6 +1331,114 @@ async function loadBrasil() {
     drawEvolucaoAnos('chartBrasil', data, 'preco_4_5kg', anos, ativos, tooltipBRL, scalesBRL);
   });
   drawEvolucaoAnos('chartBrasil', data, 'preco_4_5kg', anos, ativosBr, tooltipBRL, scalesBRL);
+
+  avisoFonteBrasil(data);
+  loadCeagesp();   // série alternativa — falha dela não afeta a série principal
+}
+
+// Aviso quando o HF Brasil para de atualizar (Cloudflare desde nov/2026).
+// Calculado pela data do último preço, então some sozinho quando a série voltar.
+function avisoFonteBrasil(data) {
+  const el = document.getElementById('brasil-aviso-fonte');
+  if (!el) return;
+  const ultima = data.filter(d => d.tipo === 'HF Brasil').map(d => d.data).sort().at(-1);
+  if (!ultima) return;
+  const dias = (Date.now() - new Date(ultima + 'T12:00:00').getTime()) / 864e5;
+  if (dias <= 10) { el.hidden = true; return; }
+  const dataBR = new Date(ultima + 'T12:00:00').toLocaleDateString('pt-BR');
+  el.innerHTML = `<span class="source-alert-icon">⚠</span>
+    <div><strong>Série HF Brasil/Cepea pausada — último preço de ${dataBR}.</strong>
+    O site passou a bloquear o acesso automatizado e o uso comercial dos dados está em pedido de autorização ao Cepea.
+    Os números acima param nessa data. Enquanto isso, acompanhe a
+    <a href="#ceagesp-bloco" onclick="document.getElementById('ceagesp-bloco').scrollIntoView({behavior:'smooth'});return false;">série alternativa da CEAGESP ↓</a></div>`;
+  el.hidden = false;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── BRASIL — SÉRIE ALTERNATIVA CEAGESP (atacado SP) ─────────
+// ═══════════════════════════════════════════════════════════════
+const CEAGESP_CLASSES = [
+  { id: '15 A 18 DZ',     label: '15–18 dz (graúdo)', cor: PALETTE[0] },
+  { id: '21 A 27 DZ',     label: '21–27 dz (médio)',  cor: PALETTE[1] },
+  { id: 'ACIMA DE 31 DZ', label: '31+ dz (miúdo)',    cor: PALETTE[2] },
+];
+const ceagespLabel = id => (CEAGESP_CLASSES.find(c => c.id === id) || { label: id }).label;
+
+async function loadCeagesp() {
+  const kpis = document.getElementById('ceagesp-kpis');
+  let data;
+  try {
+    data = await sbFetch('ceagesp_precos', {
+      select: 'data,semana,ano,classificacao,preco_comum,preco_comum_4_5kg',
+      order: 'data.asc'
+    });
+  } catch (e) {
+    // Tabela ainda não criada (migrate_ceagesp_precos.sql) ou sem permissão
+    kpis.innerHTML = `<div class="loading">Série CEAGESP aguardando a primeira carga</div>`;
+    console.warn('[loadCeagesp]', e);
+    return;
+  }
+  if (!data.length) { kpis.innerHTML = `<div class="loading">Série CEAGESP aguardando a primeira carga</div>`; return; }
+
+  data.forEach(d => { d.ano = +d.ano; d.semana = +d.semana; d.preco_kg = +d.preco_comum; d.preco_4_5kg = +d.preco_comum_4_5kg; });
+  const datas  = [...new Set(data.map(d => d.data))].sort();
+  const ultima = datas.at(-1), anterior = datas.at(-2);
+  const byDia  = (dia, cl) => data.find(d => d.data === dia && d.classificacao === cl);
+  const fmtDia = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const diaSem = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' });
+
+  const cards = [{ label: 'Último pregão', value: fmtDia(ultima).slice(0, 5), unit: `${diaSem(ultima)} · ${ultima.slice(0, 4)}` }];
+  CEAGESP_CLASSES.forEach(c => {
+    const u = byDia(ultima, c.id); if (!u) return;
+    const a = anterior ? byDia(anterior, c.id) : null;
+    cards.push({
+      label: c.label,
+      value: `R$ ${u.preco_4_5kg.toFixed(2)}`,
+      unit: `R$/cx 4,5kg · R$ ${u.preco_kg.toFixed(2)}/kg`,
+      trend: a ? ((u.preco_4_5kg - a.preco_4_5kg) / a.preco_4_5kg) * 100 : null
+    });
+  });
+  // Média de 30 dias da classe média, para leitura de patamar
+  const corte = new Date(new Date(ultima + 'T12:00:00').getTime() - 30 * 864e5).toISOString().slice(0, 10);
+  const med30 = data.filter(d => d.classificacao === '21 A 27 DZ' && d.data > corte);
+  if (med30.length) cards.push({ label: 'Média 30 dias — médio', value: `R$ ${(med30.reduce((s, d) => s + d.preco_4_5kg, 0) / med30.length).toFixed(2)}`, unit: `R$/cx 4,5kg · ${med30.length} pregões` });
+  renderKpis('ceagesp-kpis', cards);
+
+  // Histórico por ano (uma classificação por vez — misturar tamanhos distorce a média)
+  const sel = document.getElementById('ceagesp-classe-select');
+  const presentes = CEAGESP_CLASSES.filter(c => data.some(d => d.classificacao === c.id));
+  sel.innerHTML = presentes.map(c => `<option value="${c.id}">${c.label}</option>`).join('');
+  sel.value = presentes.some(c => c.id === '21 A 27 DZ') ? '21 A 27 DZ' : presentes[0]?.id;
+  const anos = [...new Set(data.map(d => d.ano))].sort((a, b) => a - b);
+  const desenhaHist = () => {
+    const rows = data.filter(d => d.classificacao === sel.value);
+    const semanas = [...new Set(rows.map(d => d.semana))].sort((a, b) => a - b);
+    const datasets = anos.map((ano, i) => lineDs(String(ano), semanas.map(s => {
+      const r = rows.filter(d => d.ano === ano && d.semana === s);
+      return r.length ? +(r.reduce((t, d) => t + d.preco_4_5kg, 0) / r.length).toFixed(3) : null;
+    }), PALETTE[i % PALETTE.length]));
+    mkChart('chartCeagespHistorico', {
+      type: 'line',
+      data: { labels: semanas.map(s => `S${s}`), datasets },
+      options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { position: 'bottom' }, tooltip: tooltipBRL }, scales: scalesBRL, spanGaps: true }
+    });
+  };
+  sel.addEventListener('change', desenhaHist);
+  desenhaHist();
+
+  // Últimos 90 dias, pregão a pregão, as três classificações
+  const corte90 = new Date(new Date(ultima + 'T12:00:00').getTime() - 90 * 864e5).toISOString().slice(0, 10);
+  const dias90 = datas.filter(d => d > corte90);
+  mkChart('chartCeagespRecente', {
+    type: 'line',
+    data: {
+      labels: dias90.map(d => fmtDia(d).slice(0, 5)),
+      datasets: presentes.map(c => lineDs(c.label, dias90.map(dia => byDia(dia, c.id)?.preco_4_5kg ?? null), c.cor))
+    },
+    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom' }, tooltip: tooltipBRL }, scales: scalesBRL, spanGaps: true }
+  });
 }
 
 // Histórico comparativo: uma linha por ano, eixo X = semana ISO
@@ -2937,6 +3099,8 @@ async function loadPage(page) {
 const STATUS_THRESHOLDS = {
   // semanal (seg) — 168h de ciclo
   'brasil_precos':         { label: 'Preços Brasil',   emoji: '🇧🇷', amarelo: 200,  vermelho: 360  },
+  // série alternativa (17/11/2026) — roda no mesmo ETL semanal
+  'ceagesp_precos':        { label: 'Preços CEAGESP (alternativa)', emoji: '🏪', amarelo: 200, vermelho: 360 },
   'chile_precos':          { label: 'Preços Chile',    emoji: '🇨🇱', amarelo: 200,  vermelho: 360  },
   'europa_precos':         { label: 'Preços Europa',   emoji: '🇪🇺', amarelo: 200,  vermelho: 360  },
   'colombia_precos':       { label: 'Preços Colômbia', emoji: '🇨🇴', amarelo: 200,  vermelho: 360  },
