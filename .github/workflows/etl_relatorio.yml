@@ -4,8 +4,13 @@ name: ETL Relatório Semanal — Email PDF
 # foi pulado pelo GitHub (skip em minuto cheio sob carga) e os crons das 8h UTC
 # atrasaram ~3h10 — a folga de 2h entre ETLs e relatório não é garantia.
 # Agora o relatório dispara quando o "ETL Semanal — Preços" termina: se o cron
-# atrasar, tudo desliza junto na ordem certa; se o ETL falhar, o relatório não
-# sai com dado velho (a issue de falha do ETL já avisa).
+# atrasar, tudo desliza junto na ordem certa.
+#
+# 15/11/2026: falha PARCIAL do ETL não bloqueia mais o relatório. Entre 19/10 e
+# 09/11 cada segunda caiu uma fonte diferente e o relatório ficou 4 semanas sem
+# sair. Agora ele segue o run com `success` OU `failure`; o próprio script lê
+# v_ultima_atualizacao, lista na capa e no e-mail as fontes sem atualização, e
+# só aborta se NENHUMA fonte de preço atualizou (dado inteiramente velho).
 # O ETL Semanal é o mais longo do lote das 8h UTC (3 scrapers + playwright),
 # então containers/clima do mesmo lote terminam antes dele.
 
@@ -30,9 +35,12 @@ jobs:
     # Consequência assumida: se o pg_cron falhar e só o cron do GitHub rodar, os
     # preços entram mas o relatório não sai — o monitor das 08h30 BRT detecta e
     # o reenvio é um workflow_dispatch daqui.
+    # `failure` entra desde 15/11/2026 (ver topo). `cancelled`/`timed_out`
+    # continuam fora: run interrompido no meio não é sinal confiável.
     if: >
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
+      ((github.event.workflow_run.conclusion == 'success' ||
+        github.event.workflow_run.conclusion == 'failure') &&
        github.event.workflow_run.event == 'repository_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -81,7 +89,7 @@ jobs:
               `**Run:** ${context.runId}`,
               `**Link:** https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               '',
-              'Possível causa: falha Resend API, Supabase fora do ar, ou erro de geração do PDF.',
+              'Possível causa: nenhuma fonte de preço atualizada (ver log: ABORTADO), falha Resend API, Supabase fora do ar, ou erro de geração do PDF.',
             ].join('\n');
             await github.rest.issues.create({
               owner: context.repo.owner,

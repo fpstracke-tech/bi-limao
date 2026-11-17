@@ -7,8 +7,10 @@ monta PDF paginado com capa e envia via Resend API.
 import os
 import io
 import base64
+import html
+import sys
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 # ── Configuração ────────────────────────────────────────────────────────────
 RESEND_API_KEY = os.environ["RESEND_API_KEY"]
@@ -33,16 +35,82 @@ DATA_PT = f"{hoje.day} de {MESES_PT[hoje.month-1]} de {hoje.year}"
 
 from logo_b64 import LOGO_B64
 
+_SB_HEADERS = {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+
+# ── Frescor das fontes de preço ──────────────────────────────────────────────
+# 15/11/2026: o relatório deixou de exigir que TODAS as fontes do ETL Semanal
+# passem. Entre 19/10 e 09/11 cada segunda uma fonte diferente caiu (HF Brasil
+# atrás de Cloudflare, web service do DANE fora do ar...) e o relatório ficou
+# 4 semanas sem sair por causa de UMA fonte. Agora ele sai com o que atualizou
+# e avisa, na capa e no corpo do e-mail, quais fontes estão com dado antigo.
+# Continua NÃO saindo se nenhuma fonte de preço atualizou (aí é dado velho
+# inteiro, e o e-mail não agrega nada).
+PRECOS = [
+    ("brasil_precos",   "Preços Brasil"),
+    ("chile_precos",    "Preços Chile"),
+    ("mexico_precos",   "Preços México"),
+    ("colombia_precos", "Preços Colômbia"),
+    ("peru_precos",     "Preços Peru"),
+    ("europa_precos",   "Preços Europa"),
+]
+# Mesmo limiar "amarelo" das fontes semanais no STATUS_THRESHOLDS do index.html.
+LIMIAR_DEFASADA_H = 200
+BRT = timezone(timedelta(hours=-3))
+
+
+def _parse_ts(txt):
+    """Postgres devolve fração com <6 dígitos às vezes; fromisoformat do 3.11 aceita."""
+    return datetime.fromisoformat(txt.replace("Z", "+00:00"))
+
+
+def fetch_frescor():
+    r = requests.get(f"{SUPABASE_URL}/rest/v1/v_ultima_atualizacao?select=*",
+                     headers=_SB_HEADERS, timeout=15)
+    r.raise_for_status()
+    return {row["tabela"]: _parse_ts(row["ultima_atualizacao"])
+            for row in r.json() if row.get("ultima_atualizacao")}
+
+
+def classificar_fontes(frescor, agora):
+    """Devolve (frescas, defasadas); defasadas = [(label, datetime|None)]."""
+    frescas, defasadas = [], []
+    for tabela, label in PRECOS:
+        ts = frescor.get(tabela)
+        if ts and (agora - ts).total_seconds() / 3600 <= LIMIAR_DEFASADA_H:
+            frescas.append(tabela)
+        else:
+            defasadas.append((label, ts))
+    return frescas, defasadas
+
+
+def descrever_defasadas(defasadas):
+    partes = []
+    for label, ts in defasadas:
+        quando = ts.astimezone(BRT).strftime("%d/%m") if ts else "sem registro"
+        partes.append(f"{label} (último dado em {quando})")
+    return partes
+
+
+FRESCAS, DEFASADAS = classificar_fontes(fetch_frescor(), datetime.now(timezone.utc))
+DEFASADAS_TXT = descrever_defasadas(DEFASADAS)
+if not FRESCAS:
+    print("ABORTADO: nenhuma fonte de preço atualizou nos últimos "
+          f"{LIMIAR_DEFASADA_H}h — relatório não sai com dado inteiramente velho.")
+    for t in DEFASADAS_TXT:
+        print(f"  {t}")
+    sys.exit(1)
+if DEFASADAS:
+    print("Fontes sem atualização nesta semana (vão no aviso do relatório):")
+    for t in DEFASADAS_TXT:
+        print(f"  {t}")
+
+
 # ── Fetch última semana com dados ────────────────────────────────────────────
-def fetch_ultima_semana():
-    url = f"{SUPABASE_URL}/rest/v1/brasil_precos"
-    params = "select=semana,ano&order=ano.desc,semana.desc&limit=1"
+def fetch_ultima_semana(tabela):
     r = requests.get(
-        f"{url}?{params}",
-        headers={
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-        },
+        f"{SUPABASE_URL}/rest/v1/{tabela}"
+        "?select=semana,ano&order=ano.desc,semana.desc&limit=1",
+        headers=_SB_HEADERS,
         timeout=15,
     )
     r.raise_for_status()
@@ -51,7 +119,11 @@ def fetch_ultima_semana():
         return int(rows[0]["semana"]), int(rows[0]["ano"])
     return None, None
 
-semana_num, ano_num = fetch_ultima_semana()
+# A semana do título vem do Brasil (referência histórica do relatório). Se o
+# Brasil estiver defasado, usa o Chile — mesma convenção de semana (Power Query).
+_tabela_semana = next((t for t in ("brasil_precos", "chile_precos") if t in FRESCAS),
+                      "brasil_precos")
+semana_num, ano_num = fetch_ultima_semana(_tabela_semana)
 semana_label = f"S{semana_num}/{ano_num}" if semana_num else hoje.strftime('%d/%m/%Y')
 SEMANA_TXT = f"Semana {semana_num} de {ano_num}" if semana_num else DATA_PT
 SUBJECT = f"Relatório Semanal BI Limão {semana_label}"
@@ -176,6 +248,7 @@ TEXT    = "#F0F4F0"
 TEXT2   = "#8A9A8A"
 TEXT3   = "#5A6A5A"
 BORDER  = "#1E241E"
+AMBER   = "#E0A33A"
 
 # Plus Jakarta Sans (tipografia do design system), baixada em runtime
 # com fallback para DejaVu se o download falhar.
@@ -252,6 +325,23 @@ def montar_capa():
     d.text((M, y), SEMANA_TXT, font=_font(42, "medium"), fill=TEXT)
     y += 70
     d.text((M, y), DATA_PT, font=_font(28, "regular"), fill=TEXT2)
+
+    # Aviso de fontes sem atualização (cabe entre a data e o "Conteúdo")
+    if DEFASADAS_TXT:
+        y += 84
+        fonte = _font(26, "regular")
+        _tracked(d, (M, y), "SEM ATUALIZAÇÃO NESTA SEMANA", _font(20, "semibold"), AMBER, 8)
+        y += 44
+        linha, largura = "", PAGE_W - 2 * M
+        for parte in [p + (", " if i < len(DEFASADAS_TXT) - 1 else "")
+                      for i, p in enumerate(DEFASADAS_TXT)]:
+            if linha and d.textlength(linha + parte, font=fonte) > largura:
+                d.text((M, y), linha.rstrip(), font=fonte, fill=TEXT2)
+                y += 40
+                linha = ""
+            linha += parte
+        if linha:
+            d.text((M, y), linha.rstrip(), font=fonte, fill=TEXT2)
 
     # Conteúdo em duas colunas
     y = 1280
@@ -340,6 +430,22 @@ def send_email(pdf_bytes):
 
     secoes = ", ".join(label for _, label in ABAS[:-1]) + f" e {ABAS[-1][1]}"
 
+    aviso_html = ""
+    if DEFASADAS_TXT:
+        itens = "".join(f"<li>{html.escape(t)}</li>" for t in DEFASADAS_TXT)
+        aviso_html = f"""
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="margin:4px 0 6px;border-collapse:collapse">
+                <tr>
+                  <td style="background:#FFF6E5;border-left:4px solid #E0A33A;padding:12px 16px;
+                             color:#5c4300;font-size:14px;line-height:1.5">
+                    <strong>Atenção:</strong> estas fontes não atualizaram nesta semana
+                    e aparecem no relatório com o último dado disponível:
+                    <ul style="margin:6px 0 0;padding-left:18px">{itens}</ul>
+                  </td>
+                </tr>
+              </table>"""
+
     payload = {
         "from": FROM_EMAIL,
         "to": TO_EMAILS,
@@ -367,6 +473,7 @@ def send_email(pdf_bytes):
                 Segue em anexo o relatório desta semana, com as seções
                 {secoes}.
               </p>
+              {aviso_html}
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 0">
                 <tr>
                   <td align="center" bgcolor="#4CAE4F" style="border-radius:6px">
